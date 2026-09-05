@@ -1,0 +1,18 @@
+/* Poshmark Refine - result grid states. Colours deliberately quiet; the grid
+   is Poshmark's, we only annotate it. */
+
+.tile-grid-redesign.pmr-hide { display: none; }
+.tile-grid-redesign.pmr-hide.pmr-fade { display: block; opacity: 0.25; filter: grayscale(1); }
+.tile-grid-redesign.pmr-dim { opacity: 0.55; }
+.tile-grid-redesign.pmr-show { opacity: 1; }
+
+.tile-grid-redesign .pmr-strip {
+  font: 11px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #5b4b3a;
+  background: #f6efe6;
+  border-left: 3px solid #c9a27a;
+  padding: 3px 6px;
+  margin: 4px 0 0;
+}
+.tile-grid-redesign.pmr-hide .pmr-strip { border-left-color: #b8524f; color: #6e2f2d; background: #f8ecec; }
+.tile-grid-redesign.pmr-dim .pmr-strip { border-left-color: #8a8a8a; color: #555; background: #f1f1f1; }

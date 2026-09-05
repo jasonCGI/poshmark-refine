@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Poshmark Refine settings</title>
+<style>
+  :root { --ink: #2b241d; --muted: #6b5f52; --line: #e3d9cc; --accent: #a56a3a; --bg: #fbf8f3; }
+  body { margin: 0; padding: 28px 32px 48px; max-width: 760px; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.lede { color: var(--muted); margin: 0 0 24px; }
+  h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 28px 0 10px; }
+  .row { display: grid; grid-template-columns: 160px 1fr; gap: 10px 16px; align-items: center; margin: 8px 0; }
+  input[type=text], select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: #fff; width: 100%; box-sizing: border-box; }
+  button { font: inherit; padding: 6px 12px; border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 4px; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); }
+  .person { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 10px 0; background: #fff; }
+  .person header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .hint { color: var(--muted); font-size: 13px; }
+  .saved { color: #2f6b3a; font-size: 13px; margin-left: 10px; }
+  code { background: #f1ebe2; padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+  <h1>Poshmark Refine</h1>
+  <p class="lede">Filters live on the search page you open. Nothing here leaves your browser.</p>
+
+  <h2>Who are you shopping for?</h2>
+  <div class="row">
+    <label for="who">Shopping for</label>
+    <select id="who"></select>
+  </div>
+  <div class="row">
+    <label for="category">Category</label>
+    <select id="category">
+      <option value="tops">Tops</option>
+    </select>
+  </div>
+
+  <h2>Family</h2>
+  <div id="people"></div>
+  <button id="addPerson" class="ghost">Add a person</button>
+  <p class="hint">Sizes per person, comma-separated: <code>S, M</code> or <code>US 8</code> or <code>1X</code>. A person with several sizes matches any of them.</p>
+
+  <h2>Constraints for this search</h2>
+  <div class="row">
+    <label for="brands">Brands (optional)</label>
+    <input id="brands" type="text" placeholder="Rails, Madewell">
+  </div>
+  <div class="row">
+    <label for="colours">Colours (optional)</label>
+    <input id="colours" type="text" placeholder="pink, white">
+  </div>
+  <p class="hint">Colour families: black, white, grey, beige, brown, red, pink, orange, yellow, green, blue, purple, multi.</p>
+
+  <h2>Behaviour</h2>
+  <div class="row">
+    <label for="hideMode">Non-matching cards</label>
+    <select id="hideMode">
+      <option value="fade">Fade out (still visible, with the reason)</option>
+      <option value="hide">Remove from the grid</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="tier3">Colour from listing</label>
+    <label><input id="tier3" type="checkbox"> On hover, read the listing page under the pointer for its colour tag. One at a time, never in bulk, same request your click would make.</label>
+  </div>
+
+  <p><button id="save">Save</button><span id="status" class="saved" hidden>Saved</span></p>
+  <script src="options.js"></script>
+</body>
+</html>
