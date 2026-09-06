@@ -82,11 +82,20 @@
     tile.dataset.pmrColourUnknown = String(card.colours.size === 0 && !!settings.colours.length);
   }
 
+  // Reorder by moving each tile's WRAPPER (the direct child of the grid that
+  // contains it), not the tile itself - the tile lives inside a layout column
+  // and detaching it from that column would break Poshmark's grid.
+  function wrapperOf(tile, grid) {
+    let w = tile;
+    while (w.parentElement && w.parentElement !== grid) w = w.parentElement;
+    return w;
+  }
+
   function resort(grid) {
     const tiles = [...grid.querySelectorAll(SEL.tile)];
-    const keyed = tiles.map((t, i) => [Number(t.dataset.pmrOrder || 0), i, t]);
+    const keyed = tiles.map((t, i) => [Number(t.dataset.pmrOrder || 0), i, wrapperOf(t, grid)]);
     keyed.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    for (const [, , t] of keyed) grid.appendChild(t);
+    for (const [, , w] of keyed) grid.appendChild(w);
   }
 
   // Tier 3: on hover, read the listing page under the pointer for its colour.
@@ -99,12 +108,16 @@
     try {
       const res = await fetch(location.origin + path, { credentials: "same-origin" });
       const html = await res.text();
+      // Poshmark embeds the listing as JSON with a structured colour field; read
+      // that first - it is authoritative when the seller filled it in (an empty
+      // "color":"" contributes nothing). Then fall back to the visible labelled
+      // detail and the description text.
+      const jsonColour = (html.match(/"colou?rs?"\s*:\s*"([^"]+)"/i) || [])[1] || "";
       const doc = new DOMParser().parseFromString(html, "text/html");
-      // The listing page states colour as a labelled detail; fall back to the description.
       const detail = [...doc.querySelectorAll("[class*='listing__'], [class*='detail'], [class*='color']")]
         .map((n) => n.textContent).join(" ");
       const desc = (doc.querySelector("[class*='description']") || {}).textContent || "";
-      const found = coloursFromTitle(detail + " " + desc);
+      const found = coloursFromTitle(jsonColour + " " + detail + " " + desc);
       colourCache.set(path, found);
     } catch {
       colourCache.set(path, new Set());     // do not retry a failed read this tab
@@ -114,8 +127,20 @@
     judge(tile);
   }
 
+  // The grid is the nearest ancestor of a result tile that holds more than one
+  // tile. Poshmark wraps each tile in its own layout column (col-x12 col-l6 ...),
+  // so a tile's immediate parent is NOT the grid - walk up until we find the real
+  // container (currently .tiles_container). Falls back to the immediate parent.
+  function findGrid() {
+    const first = document.querySelector(SEL.tile);
+    if (!first) return null;
+    let g = first.parentElement;
+    while (g && g.querySelectorAll(SEL.tile).length < 2) g = g.parentElement;
+    return g || first.parentElement;
+  }
+
   function apply() {
-    const grid = document.querySelector(SEL.tile)?.parentElement;
+    const grid = findGrid();
     if (!grid) return;
     for (const tile of grid.querySelectorAll(SEL.tile)) judge(tile);
     resort(grid);

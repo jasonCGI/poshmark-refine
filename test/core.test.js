@@ -101,6 +101,22 @@ test("colour synonyms map into families", () => {
   assert.ok(coloursFromTitle("Light Blue Polka Dot Top").has("blue"));
 });
 
+test("expanded vocabulary catches shades Poshmark's flat filter cannot", () => {
+  assert.ok(coloursFromTitle("Aubergine Silk Blouse").has("purple"));
+  assert.ok(coloursFromTitle("Cerulean Wrap Top").has("blue"));
+  assert.ok(coloursFromTitle("Oxblood Leather Shell").has("red"));
+  assert.ok(coloursFromTitle("Seafoam Ribbed Tank").has("green"));
+  assert.ok(coloursFromTitle("Burnt Orange Peasant Top").has("orange"));
+});
+
+test("ambiguous first-name-ish colours only match in their phrase form", () => {
+  // 'ruby red' is a colour; 'Ruby' alone is a name - do not match it.
+  assert.ok(coloursFromTitle("Ruby Red Satin Cami").has("red"));
+  assert.equal(coloursFromTitle("Ruby Wildflower Blouse").size, 0);
+  // 'fawn' was removed entirely - it collided with the brand 'Gentle Fawn'.
+  assert.equal(coloursFromTitle("Gentle Fawn Idyll Blouse Top").size, 0);
+});
+
 test("a title with no colour word is an EMPTY set - unknown, not colourless", () => {
   assert.equal(coloursFromTitle("Flattering blouse").size, 0);
   assert.equal(coloursFromTitle("Joie Blouse").size, 0);

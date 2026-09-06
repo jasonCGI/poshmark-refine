@@ -109,6 +109,7 @@ export const BRAND_ALIASES = {
   "Zara": ["zara"],
   "J.Crew": ["j.crew", "j crew", "jcrew"],
   "Lululemon": ["lululemon", "lulu"],
+  "Vuori": ["vuori"],
 };
 
 const BRAND_INDEX = Object.entries(BRAND_ALIASES)
@@ -137,20 +138,27 @@ export function normalizeBrand(title, aliases = BRAND_INDEX) {
  * can belong to two families where sellers genuinely use it both ways
  * (cream -> white and beige).
  */
+// Poshmark's own colour FILTER offers only ~16 flat options, so the structured
+// "color" field a listing carries is coarse and often blank or wrong. The title
+// and description are where sellers name the real shade - so this table is
+// deliberately richer than Poshmark's filter. It maps the words sellers actually
+// write INTO a family. Ambiguous first-name-ish words (amber, ruby, iris, berry)
+// are only included in an unambiguous phrase form ("ruby red", "iris purple") to
+// avoid matching a person's name in a title. The table grows from corrections.
 export const COLOUR_FAMILIES = {
-  black: ["black", "noir", "onyx", "jet"],
-  white: ["white", "ivory", "cream", "off-white", "off white", "eggshell", "bone"],
-  grey: ["grey", "gray", "charcoal", "heather", "slate", "silver"],
-  beige: ["beige", "tan", "khaki", "camel", "sand", "cream", "oat", "oatmeal", "nude", "taupe", "butter"],
-  brown: ["brown", "chocolate", "coffee", "mocha", "cognac", "rust", "chestnut", "espresso"],
-  red: ["red", "burgundy", "wine", "maroon", "crimson", "scarlet", "cherry", "brick"],
-  pink: ["pink", "blush", "rose", "rosewood", "coral", "fuchsia", "magenta", "mauve", "dusty mauve", "salmon", "peach"],
-  orange: ["orange", "coral", "peach", "apricot", "tangerine", "rust", "terracotta", "sunset"],
-  yellow: ["yellow", "mustard", "gold", "lemon", "butter", "marigold"],
-  green: ["green", "olive", "sage", "emerald", "forest", "mint", "lime", "khaki", "rye green", "moss", "hunter"],
-  blue: ["blue", "navy", "cobalt", "royal", "sky", "denim", "chambray", "indigo", "teal", "aqua", "turquoise", "light blue"],
-  purple: ["purple", "lavender", "lilac", "plum", "violet", "eggplant", "mauve", "dusty mauve"],
-  multi: ["multi", "multicolor", "multicolour", "floral", "print", "printed", "pattern", "patterned", "polka dot", "striped", "stripe", "plaid", "tie dye", "tye dye", "leopard", "cheetah"],
+  black: ["black", "noir", "onyx", "jet", "ebony", "coal", "raven"],
+  white: ["white", "ivory", "cream", "off-white", "off white", "eggshell", "bone", "snow", "pearl", "porcelain", "chalk", "winter white"],
+  grey: ["grey", "gray", "charcoal", "heather", "slate", "silver", "gunmetal", "pewter", "graphite", "smoke grey", "smoke gray", "steel grey", "steel gray", "greige"],
+  beige: ["beige", "tan", "khaki", "camel", "sand", "cream", "oat", "oatmeal", "nude", "taupe", "butter", "wheat", "ecru", "champagne", "latte", "biscuit", "putty"],
+  brown: ["brown", "chocolate", "coffee", "mocha", "cognac", "rust", "chestnut", "espresso", "walnut", "toffee", "caramel", "sienna", "umber", "bronze", "tobacco", "pecan"],
+  red: ["red", "burgundy", "wine", "maroon", "crimson", "scarlet", "cherry", "brick", "garnet", "cranberry", "oxblood", "rouge", "ruby red", "berry red"],
+  pink: ["pink", "blush", "rose", "rosewood", "coral", "fuchsia", "magenta", "mauve", "dusty mauve", "salmon", "peach", "hot pink", "bubblegum", "flamingo", "raspberry", "ballet pink", "rose gold"],
+  orange: ["orange", "coral", "peach", "apricot", "tangerine", "rust", "terracotta", "sunset", "burnt orange", "pumpkin", "clay", "papaya", "marmalade"],
+  yellow: ["yellow", "mustard", "gold", "lemon", "butter", "marigold", "canary", "goldenrod", "saffron", "chartreuse"],
+  green: ["green", "olive", "sage", "emerald", "forest", "mint", "lime", "khaki", "rye green", "moss", "hunter", "kelly green", "jade", "seafoam", "pistachio", "avocado", "juniper", "army green"],
+  blue: ["blue", "navy", "cobalt", "royal", "sky", "denim", "chambray", "indigo", "teal", "aqua", "turquoise", "light blue", "cerulean", "azure", "periwinkle", "powder blue", "baby blue", "midnight blue", "sapphire", "cornflower", "steel blue"],
+  purple: ["purple", "lavender", "lilac", "plum", "violet", "eggplant", "mauve", "dusty mauve", "aubergine", "orchid", "amethyst", "grape", "wisteria", "periwinkle", "mulberry", "boysenberry", "iris purple"],
+  multi: ["multi", "multicolor", "multicolour", "floral", "print", "printed", "pattern", "patterned", "polka dot", "striped", "stripe", "plaid", "tie dye", "tye dye", "leopard", "cheetah", "rainbow", "colorblock", "color block", "colour block", "ombre", "gingham", "houndstooth", "paisley", "camo", "camouflage", "animal print", "snakeskin", "argyle"],
 };
 
 const COLOUR_INDEX = Object.entries(COLOUR_FAMILIES)
