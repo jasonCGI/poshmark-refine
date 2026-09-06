@@ -55,6 +55,19 @@
     tile.classList.remove("pmr-show", "pmr-dim", "pmr-hide", "pmr-fade");
     tile.classList.add("pmr-" + v.state);
     if (v.state === "hide" && settings.hideMode === "fade") tile.classList.add("pmr-fade");
+    // A badge on the cover image. The media wrapper is already positioned (it
+    // hosts the like button), so the badge anchors to it without disturbing
+    // Poshmark's layout. State is the badge word + colour, not opacity alone.
+    const media = tile.querySelector(".tile-grid-redesign__media--wrapper") || tile;
+    let badge = media.querySelector(":scope > .pmr-badge");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "pmr-badge";
+      media.appendChild(badge);
+    }
+    const label = { show: "Match", dim: "Check", hide: "Off" }[v.state] || "";
+    badge.textContent = label;
+    badge.setAttribute("aria-label", "Poshmark Refine: " + label);
     let strip = tile.querySelector(".pmr-strip");
     if (!strip) {
       strip = document.createElement("div");
@@ -139,11 +152,102 @@
     return g || first.parentElement;
   }
 
+  // A quiet fixed summary: how many matched, need a colour check, or were hidden,
+  // plus a toggle to reveal the hidden cards without leaving the search.
+  // It floats (fixed to the viewport, so it stays put through infinite scroll),
+  // but the shopper can drag it anywhere by the "Refine" handle and it remembers
+  // the spot; a collapse control shrinks it to just the handle. Best of pinned
+  // and floating without making them choose.
+  const HUD_POS_KEY = "pmr-hud-pos";
+  const HUD_MIN_KEY = "pmr-hud-min";
+
+  function makeDraggable(hud, handle) {
+    let ox, oy, sx, sy, dragging = false;
+    handle.addEventListener("pointerdown", (e) => {
+      dragging = true; handle.setPointerCapture(e.pointerId);
+      const r = hud.getBoundingClientRect();
+      ox = r.left; oy = r.top; sx = e.clientX; sy = e.clientY;
+      hud.style.left = ox + "px"; hud.style.top = oy + "px"; hud.style.bottom = "auto";
+      hud.classList.add("pmr-dragging"); e.preventDefault();
+    });
+    handle.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const nl = Math.max(6, Math.min(window.innerWidth - hud.offsetWidth - 6, ox + (e.clientX - sx)));
+      const nt = Math.max(6, Math.min(window.innerHeight - hud.offsetHeight - 6, oy + (e.clientY - sy)));
+      hud.style.left = nl + "px"; hud.style.top = nt + "px";
+    });
+    const end = () => {
+      if (!dragging) return;
+      dragging = false; hud.classList.remove("pmr-dragging");
+      try { localStorage.setItem(HUD_POS_KEY, JSON.stringify({ left: parseInt(hud.style.left, 10), top: parseInt(hud.style.top, 10) })); } catch (e) {}
+    };
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  }
+
+  function ensureHud() {
+    let hud = document.getElementById("pmr-hud");
+    if (hud) return hud;
+    hud = document.createElement("div");
+    hud.id = "pmr-hud";
+    hud.setAttribute("role", "status");
+    hud.innerHTML =
+      '<span class="pmr-hud-brand" title="Drag to move">Refine</span>' +
+      '<span class="pmr-hud-body">' +
+        '<span class="pmr-hud-sep"></span>' +
+        '<span class="pmr-hud-stat pmr-c-show"><span class="pmr-hud-dot"></span><b data-pmr="show">0</b> matched</span>' +
+        '<span class="pmr-hud-stat pmr-c-dim"><span class="pmr-hud-dot"></span><b data-pmr="dim">0</b> to check</span>' +
+        '<span class="pmr-hud-stat pmr-c-hide"><span class="pmr-hud-dot"></span><b data-pmr="hide">0</b> hidden</span>' +
+        '<span class="pmr-hud-sep"></span>' +
+        '<button type="button" class="pmr-hud-reveal">Show hidden</button>' +
+      '</span>' +
+      '<button type="button" class="pmr-hud-min" aria-label="Collapse Refine summary">–</button>';
+    document.body.appendChild(hud);
+    hud.querySelector(".pmr-hud-reveal").addEventListener("click", () => {
+      const on = document.body.classList.toggle("pmr-reveal");
+      hud.querySelector(".pmr-hud-reveal").textContent = on ? "Hide hidden" : "Show hidden";
+    });
+    const min = hud.querySelector(".pmr-hud-min");
+    min.addEventListener("click", () => {
+      const on = hud.classList.toggle("pmr-collapsed");
+      min.textContent = on ? "+" : "–";
+      min.setAttribute("aria-label", on ? "Expand Refine summary" : "Collapse Refine summary");
+      try { localStorage.setItem(HUD_MIN_KEY, on ? "1" : "0"); } catch (e) {}
+    });
+    makeDraggable(hud, hud.querySelector(".pmr-hud-brand"));
+    try {
+      const pos = JSON.parse(localStorage.getItem(HUD_POS_KEY) || "null");
+      if (pos && Number.isFinite(pos.left)) { hud.style.left = pos.left + "px"; hud.style.top = pos.top + "px"; hud.style.bottom = "auto"; }
+      if (localStorage.getItem(HUD_MIN_KEY) === "1") { hud.classList.add("pmr-collapsed"); min.textContent = "+"; }
+    } catch (e) {}
+    return hud;
+  }
+
+  function updateHud(grid) {
+    const intent = currentIntent();
+    const active = !!(intent.sizes || intent.brands || intent.colours);
+    const hud = ensureHud();
+    hud.hidden = !active;
+    if (!active) return;
+    const counts = { show: 0, dim: 0, hide: 0 };
+    for (const t of grid.querySelectorAll(SEL.tile)) {
+      const s = t.classList.contains("pmr-show") ? "show"
+        : t.classList.contains("pmr-dim") ? "dim"
+        : t.classList.contains("pmr-hide") ? "hide" : null;
+      if (s) counts[s]++;
+    }
+    for (const k of ["show", "dim", "hide"]) {
+      hud.querySelector('[data-pmr="' + k + '"]').textContent = String(counts[k]);
+    }
+    hud.querySelector(".pmr-hud-reveal").hidden = counts.hide === 0;
+  }
+
   function apply() {
     const grid = findGrid();
     if (!grid) return;
     for (const tile of grid.querySelectorAll(SEL.tile)) judge(tile);
     resort(grid);
+    updateHud(grid);
     grid.dataset.pmrCount = String(grid.querySelectorAll(SEL.tile).length);
   }
 
