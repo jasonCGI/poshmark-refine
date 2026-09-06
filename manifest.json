@@ -5,6 +5,9 @@
   "description": "Makes Poshmark search respect the size, brand and colour you asked for. Works only on the page you loaded; sends nothing anywhere.",
   "permissions": ["storage"],
   "host_permissions": ["https://poshmark.com/*"],
+  "background": {
+    "service_worker": "extension/sw.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://poshmark.com/search*", "https://poshmark.com/category/*", "https://poshmark.com/brand/*"],
@@ -24,6 +27,6 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "Poshmark Refine settings"
+    "default_title": "Poshmark Refine settings (click to open)"
   }
 }
