@@ -58,9 +58,13 @@
   .pstatus.on { border-color: color-mix(in srgb, var(--match) 45%, var(--line)); }
   .pstatus .led { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
   .pstatus.on .led { background: var(--match); }
-  .upbar { display: flex; align-items: center; gap: 8px; margin: 10px 14px 0; padding: 8px 10px; border-radius: 8px; font-size: 12.5px;
+  .upbar { display: flex; align-items: flex-start; gap: 8px; margin: 10px 14px 0; padding: 8px 10px; border-radius: 8px; font-size: 12.5px;
            background: color-mix(in srgb, var(--accent) 12%, var(--card)); border: 1px solid var(--accent); color: var(--accent-ink); }
-  .upbar a { color: inherit; font-weight: 700; margin-left: auto; }
+  /* The steps ARE the content, so they get the room a decorative link used to
+     take. chrome://extensions cannot be linked from a page, so it stays text. */
+  .upbar .upmsg { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .upbar .upsteps { font-size: 11.5px; opacity: .85; }
+  .upbar button { margin-left: auto; }
   .upbar button { font: inherit; cursor: pointer; background: none; border: 0; color: inherit; font-size: 15px; line-height: 1; padding: 0 2px; }
   .pstatus .mini { font: inherit; font-weight: 600; cursor: pointer; margin-left: auto; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; }
 </style>
@@ -72,8 +76,10 @@
     <span class="who" id="whoLabel"></span>
   </header>
   <div class="upbar" id="upbar" hidden>
-    <span id="uptext"></span>
-    <a id="uplink" href="#" target="_blank" rel="noreferrer">How</a>
+    <span class="upmsg">
+      <b id="uptext"></b>
+      <span class="upsteps">Pull the repo, then Reload it on the extensions page.</span>
+    </span>
     <button id="updismiss" type="button" title="Dismiss">&times;</button>
   </div>
   <div class="pstatus" id="pagestatus"><span class="led"></span><span id="pstext">Checking this page&hellip;</span></div>

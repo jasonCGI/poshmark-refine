@@ -22,7 +22,7 @@ const DEFAULTS = {
 // Single source of truth for sizes, colours and brands lives in core/ - import
 // it so the popup can never drift from what the verdict engine actually knows.
 import { CATEGORY_SIZES, CATEGORIES, COLOUR_FAMILIES, BRAND_ALIASES } from "../core/normalize.js";
-import { isNewer, shouldCheck, fetchLatestVersion, REPO_URL } from "../core/update.js";
+import { isNewer, shouldCheck, fetchLatestVersion } from "../core/update.js";
 import { capturePreset, applyPreset, upsertPreset, removePreset, describePreset } from "../core/presets.js";
 // The search URL is built in core/search.js, shared with the brand-site bridge,
 // so the two can never disagree about what a search means.
@@ -438,7 +438,6 @@ async function runUpdateCheck() {
   const show = (latest) => {
     if (!latest || !isNewer(latest, cur)) return;
     $("uptext").textContent = "v" + latest + " available (you have " + cur + ")";
-    $("uplink").href = REPO_URL;
     $("upbar").hidden = st.dismissed === latest;
   };
   show(st.latest);

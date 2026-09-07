@@ -12,7 +12,6 @@
 
 export const UPDATE_URL =
   "https://raw.githubusercontent.com/jasonCGI/poshmark-refine/main/manifest.json";
-export const REPO_URL = "https://github.com/jasonCGI/poshmark-refine";
 const DAY = 24 * 60 * 60 * 1000;
 
 /**

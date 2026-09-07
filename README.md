@@ -63,7 +63,7 @@ extension makes that is not to Poshmark.
 
 ## Status
 
-Shipping at **v0.15.1**, loaded and used in Chrome.
+Shipping at **v0.15.2**, loaded and used in Chrome.
 
 | piece | state |
 |---|---|
