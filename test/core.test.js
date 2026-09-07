@@ -10,6 +10,9 @@ import {
 } from "../core/normalize.js";
 import { parseCard, intentFor, verdict } from "../core/verdict.js";
 import { compareVersions, isNewer, shouldCheck, fetchLatestVersion } from "../core/update.js";
+import {
+  capturePreset, applyPreset, upsertPreset, removePreset, describePreset, PRESET_FIELDS,
+} from "../core/presets.js";
 
 const fx = JSON.parse(readFileSync(new URL("../fixtures/tops-blouse-2026-09-05.json", import.meta.url), "utf8"));
 const cards = fx.rows.map(([title, size, condition]) => parseCard({ title, size, condition }));
@@ -396,4 +399,65 @@ test("a failed or malformed update check is silent, never an error at the shoppe
   assert.equal(
     await fetchLatestVersion(async () => ({ ok: true, text: async () => '{"version": "0.11.0"}' })),
     "0.11.0");
+});
+
+// ---------------------------------------------------- saved searches ---------
+const SETTINGS = {
+  profiles: { me: { tops: ["S", "M"] }, partner: { tops: ["S"] } },
+  who: "me", category: "tops", query: "cami",
+  brands: ["Vuori"], colours: ["purple"], colourTerms: ["Velvet Violet Heather"],
+  maxPrice: 60, conditions: ["nwt"],
+  hideMode: "fade", tier3: true, department: "Women",
+};
+
+test("a preset captures the search, never the family's sizes", () => {
+  const p = capturePreset("Vuori purple", SETTINGS);
+  assert.equal(p.name, "Vuori purple");
+  assert.deepEqual(p.brands, ["Vuori"]);
+  assert.equal(p.maxPrice, 60);
+  assert.equal(p.who, "me", "whose sizes to use IS part of the search");
+  assert.equal(p.profiles, undefined, "but the sizes themselves are not");
+  assert.equal(p.hideMode, undefined, "nor the behaviour toggles");
+});
+
+test("applying a preset leaves profiles and behaviour untouched", () => {
+  const p = capturePreset("x", SETTINGS);
+  const next = applyPreset(Object.assign({}, SETTINGS, { query: "junk", brands: ["Zara"] }), p);
+  assert.deepEqual(next.brands, ["Vuori"]);
+  assert.equal(next.query, "cami");
+  assert.deepEqual(next.profiles, SETTINGS.profiles, "sizes survive");
+  assert.equal(next.hideMode, "fade");
+  assert.equal(next.tier3, true);
+});
+
+test("a field absent from the preset is CLEARED, not inherited from the last search", () => {
+  const narrow = { name: "just tops", category: "tops" };
+  const next = applyPreset(SETTINGS, narrow);
+  assert.deepEqual(next.brands, [], "leftover brand must not survive");
+  assert.deepEqual(next.colourTerms, []);
+  assert.equal(next.maxPrice, null);
+  assert.deepEqual(next.profiles, SETTINGS.profiles, "still not a sizes edit");
+});
+
+test("presets upsert by name, case-insensitively, and stay sorted", () => {
+  let list = upsertPreset([], capturePreset("Work tops", SETTINGS));
+  list = upsertPreset(list, capturePreset("Athleisure", SETTINGS));
+  assert.deepEqual(list.map((p) => p.name), ["Athleisure", "Work tops"]);
+  list = upsertPreset(list, capturePreset("WORK TOPS", Object.assign({}, SETTINGS, { query: "blazer" })));
+  assert.equal(list.length, 2, "same name replaces rather than duplicating");
+  assert.equal(list.find((p) => /work/i.test(p.name)).query, "blazer");
+  assert.deepEqual(removePreset(list, "athleisure").map((p) => p.name), ["WORK TOPS"]);
+});
+
+test("a preset describes itself for the chip tooltip", () => {
+  const d = describePreset(capturePreset("x", SETTINGS));
+  assert.match(d, /"cami"/);
+  assert.match(d, /Vuori/);
+  assert.match(d, /under \$60/);
+  assert.equal(describePreset({ name: "empty" }), "no criteria");
+});
+
+test("PRESET_FIELDS never includes profiles - that is the whole guarantee", () => {
+  assert.ok(!PRESET_FIELDS.includes("profiles"));
+  assert.ok(PRESET_FIELDS.includes("who"));
 });

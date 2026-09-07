@@ -46,6 +46,8 @@
   .searchrow { display: flex; gap: 6px; }
   .searchrow input { flex: 1; }
   .searchrow .btn { flex: none; }
+  .chip .del { font-weight: 800; opacity: .55; margin-left: 2px; }
+  .chip .del:hover { opacity: 1; }
   .pblock { border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; margin: 0 0 8px; background: var(--card); }
   .pblock + .pblock { margin-top: 8px; }
   .plabel { font-size: 11.5px; font-weight: 700; color: var(--muted); margin-bottom: 7px; }
@@ -76,6 +78,13 @@
   </div>
   <div class="pstatus" id="pagestatus"><span class="led"></span><span id="pstext">Checking this page&hellip;</span></div>
   <div class="body">
+    <h2>Saved searches <span id="prCount" class="sub"></span></h2>
+    <div id="presets" class="chips"></div>
+    <div class="searchrow" style="margin-top:7px">
+      <input id="prName" type="text" placeholder="Name this search&hellip;" aria-label="Preset name">
+      <button id="prSave" class="btn" type="button">Save</button>
+    </div>
+
     <h2>Search Poshmark</h2>
     <div class="searchrow">
       <input id="q" type="text" placeholder="vneck, blouse, joggers&hellip;" aria-label="Search terms">

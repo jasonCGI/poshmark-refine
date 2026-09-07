@@ -16,11 +16,13 @@ const DEFAULTS = {
   colourTerms: [],
   maxPrice: null,
   conditions: [],
+  presets: [],
 };
 // Single source of truth for sizes, colours and brands lives in core/ - import
 // it so the popup can never drift from what the verdict engine actually knows.
 import { CATEGORY_SIZES, CATEGORIES, COLOUR_FAMILIES, BRAND_ALIASES } from "../core/normalize.js";
 import { isNewer, shouldCheck, fetchLatestVersion, REPO_URL } from "../core/update.js";
+import { capturePreset, applyPreset, upsertPreset, removePreset, describePreset } from "../core/presets.js";
 // The search URL is built in core/search.js, shared with the brand-site bridge,
 // so the two can never disagree about what a search means.
 import { poshmarkSearchUrl, DEPARTMENTS } from "../core/search.js";
@@ -152,6 +154,54 @@ function renderSizes() {
   $("whoLabel").textContent = union.length ? state.category + " " + union.join("/") : "no sizes set";
 }
 
+function renderPresets() {
+  const host = $("presets");
+  host.innerHTML = "";
+  const list = state.presets || [];
+  for (const p of list) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip";
+    b.title = describePreset(p);
+    // preset names are the shopper's own text, but build by node anyway
+    b.appendChild(document.createTextNode(p.name));
+    const del = document.createElement("span");
+    del.className = "del"; del.textContent = "×"; del.title = "Delete this search";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.presets = removePreset(state.presets || [], p.name);
+      mark("presets"); renderPresets();
+    });
+    b.appendChild(del);
+    b.addEventListener("click", () => usePreset(p));
+    host.appendChild(b);
+  }
+  $("prCount").textContent = list.length ? "" : "(none yet)";
+}
+
+/** Apply a preset to the live criteria, save, and run its search. */
+async function usePreset(p) {
+  state = applyPreset(state, p);
+  for (const f of ["query", "department", "category", "who", "brands", "colours", "colourTerms", "maxPrice", "conditions"]) mark(f);
+  renderAll();
+  await runSearch();
+}
+
+function savePreset() {
+  const name = $("prName").value.trim();
+  if (!name) { $("prName").focus(); return; }
+  collectSizeText();
+  const current = Object.assign({}, state, {
+    query: $("q").value.trim(),
+    brands: splitList($("brands").value),
+    maxPrice: Number($("maxPrice").value) || null,
+    conditions: $("nwt").getAttribute("aria-pressed") === "true" ? ["nwt"] : [],
+  });
+  state.presets = upsertPreset(state.presets || [], capturePreset(name, current));
+  $("prName").value = "";
+  mark("presets"); renderPresets();
+  save();
+}
+
 function renderColourways() {
   const host = $("cwChips");
   host.innerHTML = "";
@@ -241,6 +291,7 @@ function renderAll() {
   $("maxPrice").value = state.maxPrice ? String(state.maxPrice) : "";
   $("nwt").setAttribute("aria-pressed", String((state.conditions || []).includes("nwt")));
   renderColourways();
+  renderPresets();
 }
 
 /** Save first (so the page refines the moment it loads), then go. Reuse the
@@ -305,6 +356,8 @@ $("who").addEventListener("change", () => { state.who = $("who").value; mark("wh
 $("category").addEventListener("change", () => { state.category = $("category").value; mark("category"); renderSizes(); });
 $("brands").addEventListener("input", () => mark("brands"));
 $("cwAdd").addEventListener("click", addColourway);
+$("prSave").addEventListener("click", savePreset);
+$("prName").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); savePreset(); } });
 $("cwInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addColourway(); } });
 $("maxPrice").addEventListener("input", () => mark("maxPrice"));
 $("nwt").addEventListener("click", () => {
@@ -339,6 +392,7 @@ async function save({ silent = false } = {}) {
   collectSizeText();                                    // catch un-blurred edits
   const stored = (await chrome.storage.local.get("refine")).refine || {};
   const mine = {
+    presets: state.presets || [],
     colourTerms: state.colourTerms,
     maxPrice: Number($("maxPrice").value) || null,
     conditions: $("nwt").getAttribute("aria-pressed") === "true" ? ["nwt"] : [],
@@ -412,6 +466,7 @@ $("updismiss").addEventListener("click", async () => {
   state = Object.assign(structuredClone(DEFAULTS), stored.refine || {});
   if (!Array.isArray(state.colours)) state.colours = [];
   if (!Array.isArray(state.colourTerms)) state.colourTerms = [];
+  if (!Array.isArray(state.presets)) state.presets = [];
   if (!Array.isArray(state.conditions)) state.conditions = [];
   if (!state.profiles || typeof state.profiles !== "object") state.profiles = structuredClone(DEFAULTS.profiles);
   renderAll();
