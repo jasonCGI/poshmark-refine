@@ -38,6 +38,22 @@
   // the observer while applying and ignore mutations we caused.
   let mo = null;
   let applying = false;
+  // Watch structure AND the text/href that identify a listing, so a card reused
+  // in place (virtualised grid) is re-judged instead of keeping a stale verdict.
+  const observeOpts = {
+    childList: true, subtree: true, characterData: true,
+    attributes: true, attributeFilter: ["href"],
+  };
+
+  /** What makes this tile *this listing*. Changes when a card is reused. */
+  function signatureOf(tile) {
+    const link = tile.querySelector(SEL.link);
+    return [
+      text(tile, SEL.title),
+      text(tile, SEL.size),
+      link ? (link.getAttribute("href") || "").split("?")[0] : "",
+    ].join("|");
+  }
 
   async function loadSettings() {
     const stored = await chrome.storage.local.get("refine");
@@ -90,6 +106,7 @@
     // observer and the convergence check below both key off this, so a tile we
     // deliberately skip cannot spin them forever.
     tile.dataset.pmrSeen = "1";
+    tile.dataset.pmrSig = signatureOf(tile);
     const fields = { title: text(tile, SEL.title), size: text(tile, SEL.size), condition: text(tile, SEL.condition) };
     if (!fields.title) return;
     const card = parseCard(fields, settings.category);
@@ -152,19 +169,31 @@
     } finally {
       inflight = null;
     }
-    judge(tile);
+    // A Tier-3 colour can move this card between show/dim/hide, so the grid has
+    // to be reconciled - re-sorted and re-counted - not just this tile repainted.
+    // apply() is re-entrancy guarded and resort() no-ops when the order is
+    // already right, so this is cheap when the verdict did not actually change.
+    apply();
   }
 
   // The grid is the nearest ancestor of a result tile that holds more than one
   // tile. Poshmark wraps each tile in its own layout column (col-x12 col-l6 ...),
   // so a tile's immediate parent is NOT the grid - walk up until we find the real
   // container (currently .tiles_container). Falls back to the immediate parent.
-  function findGrid() {
-    const first = document.querySelector(SEL.tile);
-    if (!first) return null;
-    let g = first.parentElement;
-    while (g && g.querySelectorAll(SEL.tile).length < 2) g = g.parentElement;
-    return g || first.parentElement;
+  // Every result container on the page, not just the first. Poshmark wraps each
+  // tile in its own layout column, so a tile's parent is NOT the grid; walk up to
+  // the nearest ancestor holding more than one tile. Doing this per tile finds a
+  // second results section too. Keep only innermost containers, so a wrapper that
+  // happens to contain both sections is not returned instead of them.
+  function findGrids() {
+    const found = new Set();
+    for (const t of document.querySelectorAll(SEL.tile)) {
+      let g = t.parentElement;
+      while (g && g.querySelectorAll(SEL.tile).length < 2) g = g.parentElement;
+      if (g) found.add(g); else if (t.parentElement) found.add(t.parentElement);
+    }
+    const all = [...found];
+    return all.filter((g) => !all.some((o) => o !== g && g.contains(o)));
   }
 
   // A quiet fixed summary: how many matched, need a colour check, or were hidden,
@@ -240,19 +269,27 @@
     return hud;
   }
 
-  function updateHud(grid) {
+  /** Tally verdict states across every results container on the page. */
+  function countStates(grids) {
+    const counts = { show: 0, dim: 0, hide: 0 };
+    for (const grid of grids) {
+      for (const t of grid.querySelectorAll(SEL.tile)) {
+        const s = t.classList.contains("pmr-show") ? "show"
+          : t.classList.contains("pmr-dim") ? "dim"
+          : t.classList.contains("pmr-hide") ? "hide" : null;
+        if (s) counts[s]++;
+      }
+    }
+    return counts;
+  }
+
+  function updateHud(grids) {
     const intent = currentIntent();
     const active = !!(intent.sizes || intent.brands || intent.colours);
     const hud = ensureHud();
     hud.hidden = !active;
     if (!active) return;
-    const counts = { show: 0, dim: 0, hide: 0 };
-    for (const t of grid.querySelectorAll(SEL.tile)) {
-      const s = t.classList.contains("pmr-show") ? "show"
-        : t.classList.contains("pmr-dim") ? "dim"
-        : t.classList.contains("pmr-hide") ? "hide" : null;
-      if (s) counts[s]++;
-    }
+    const counts = countStates(grids);
     for (const k of ["show", "dim", "hide"]) {
       hud.querySelector('[data-pmr="' + k + '"]').textContent = String(counts[k]);
     }
@@ -261,22 +298,26 @@
 
   function apply() {
     if (applying) return;
-    const grid = findGrid();
-    if (!grid) return;
+    const grids = findGrids();
+    if (!grids.length) return;
     applying = true;
     if (mo) mo.disconnect();          // our writes below must not feed back
     try {
-      for (const tile of grid.querySelectorAll(SEL.tile)) judge(tile);
-      resort(grid);
-      updateHud(grid);
-      grid.dataset.pmrCount = String(grid.querySelectorAll(SEL.tile).length);
+      for (const grid of grids) {
+        for (const tile of grid.querySelectorAll(SEL.tile)) judge(tile);
+        resort(grid);
+        grid.dataset.pmrCount = String(grid.querySelectorAll(SEL.tile).length);
+      }
+      updateHud(grids);
     } finally {
-      if (mo) mo.observe(document.body, { childList: true, subtree: true });
+      if (mo) mo.observe(document.body, observeOpts);
       applying = false;
       // Tiles appended WHILE we were writing went out with the observer's record
       // queue on disconnect. judge() marks every tile it looks at, so one more
       // pass picks up any stragglers and then finds none - this converges.
-      if (grid.querySelector(SEL.tile + ":not([data-pmr-seen])")) {
+      // A tile whose content was swapped in place is cleared of the marker by
+      // the observer, so it is picked up here too.
+      if (document.querySelector(SEL.tile + ":not([data-pmr-seen])")) {
         requestAnimationFrame(apply);
       }
     }
@@ -290,23 +331,40 @@
   // not news, and treating it as news is an infinite apply -> resort -> observe
   // loop that freezes the tab. Coalesce bursts into one pass per frame.
   let queued = false;
+  /** Is this mutation one of ours? Our badge/strip/HUD writes must never feed back. */
+  function isOurs(node) {
+    const el = node && (node.nodeType === 1 ? node : node.parentElement);
+    return !!(el && el.closest && el.closest(".pmr-strip, .pmr-badge, #pmr-hud"));
+  }
   mo = new MutationObserver((muts) => {
     if (applying) return;
-    let fresh = false;
+    let stale = false;
     for (const m of muts) {
+      if (isOurs(m.target)) continue;
+      // (a) genuinely new tiles from infinite scroll
       for (const n of m.addedNodes) {
         if (n.nodeType !== 1) continue;
         const tiles = n.matches?.(SEL.tile) ? [n] : (n.querySelectorAll ? n.querySelectorAll(SEL.tile) : []);
-        for (const t of tiles) if (!t.dataset.pmrSeen) { fresh = true; break; }
-        if (fresh) break;
+        for (const t of tiles) if (!t.dataset.pmrSeen) { stale = true; break; }
+        if (stale) break;
       }
-      if (fresh) break;
+      if (stale) break;
+      // (b) a tile reused in place - Poshmark swapping the title text or the link
+      // on an existing card. Its marker and verdict describe the OLD listing, so
+      // clear the marker and let apply() re-judge it.
+      const host = m.target && (m.target.nodeType === 1 ? m.target : m.target.parentElement);
+      const tile = host && host.closest ? host.closest(SEL.tile) : null;
+      if (tile && tile.dataset.pmrSeen && signatureOf(tile) !== tile.dataset.pmrSig) {
+        delete tile.dataset.pmrSeen;
+        stale = true;
+        break;
+      }
     }
-    if (!fresh || queued) return;
+    if (!stale || queued) return;
     queued = true;
     requestAnimationFrame(() => { queued = false; apply(); });
   });
-  mo.observe(document.body, { childList: true, subtree: true });
+  mo.observe(document.body, observeOpts);
 
   document.addEventListener("mouseover", (e) => {
     const tile = e.target.closest?.(SEL.tile);
@@ -318,16 +376,7 @@
   chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     if (!msg || msg.type !== "pmr:status") return;
     const intent = currentIntent();
-    const counts = { show: 0, dim: 0, hide: 0 };
-    const grid = findGrid();
-    if (grid) {
-      for (const t of grid.querySelectorAll(SEL.tile)) {
-        const s = t.classList.contains("pmr-show") ? "show"
-          : t.classList.contains("pmr-dim") ? "dim"
-          : t.classList.contains("pmr-hide") ? "hide" : null;
-        if (s) counts[s]++;
-      }
-    }
+    const counts = countStates(findGrids());
     respond({ active: !!(intent.sizes || intent.brands || intent.colours), ...counts });
   });
 

@@ -33,13 +33,25 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", 
 
 let state = structuredClone(DEFAULTS);
 
+// Track what THIS surface actually edited, so saving applies only those changes
+// onto a fresh read instead of overwriting fields the popup may have changed
+// meanwhile. A structural profile edit (add / remove / rename) cannot be merged
+// key-by-key coherently, so it takes our whole profiles object.
+const touchedSizes = new Set();          // "person::category"
+const touchedFields = new Set();         // scalar field names
+let structural = false;
+const mark = (f) => touchedFields.add(f);
+const isClean = () => !touchedSizes.size && !touchedFields.size && !structural;
+
 function sizesOf(person, cat) {
   const p = state.profiles[person] || (state.profiles[person] = {});
   return p[cat] || (p[cat] = []);
 }
 function setSizesOf(person, cat, list) {
   const p = state.profiles[person] || (state.profiles[person] = {});
+  const before = (p[cat] || []).join(" ");
   p[cat] = list;
+  if (before !== list.join(" ")) touchedSizes.add(person + "::" + cat);
 }
 
 /** Pull typed-but-not-committed size text out of the DOM. */
@@ -71,6 +83,7 @@ function renderPeople() {
       const rebuilt = {};
       for (const [k, v] of Object.entries(state.profiles)) rebuilt[k === name ? next : k] = v;
       state.profiles = rebuilt;
+      structural = true;
       if (state.who === name) state.who = next;
       renderAll();
     });
@@ -79,6 +92,7 @@ function renderPeople() {
     rm.addEventListener("click", () => {
       collectSizeText();
       delete state.profiles[name];
+      structural = true;
       if (state.who === name) state.who = Object.keys(state.profiles)[0] || "anyone";
       renderAll();
     });
@@ -165,6 +179,7 @@ function renderColours() {
     b.addEventListener("click", () => {
       const i = state.colours.indexOf(fam);
       if (i >= 0) state.colours.splice(i, 1); else state.colours.push(fam);
+      mark("colours");
       renderColours();
     });
     host.appendChild(b);
@@ -193,34 +208,64 @@ function renderAll() {
   $("tier3").checked = !!state.tier3;
 }
 
+/** Apply only the rows this page edited onto the stored profiles. A structural
+ *  change (person added / removed / renamed) takes our whole object, since a
+ *  key-by-key merge of a rename is not coherent. */
+function mergeProfiles(storedProfiles) {
+  if (structural || !storedProfiles || !Object.keys(storedProfiles).length) return state.profiles;
+  const out = JSON.parse(JSON.stringify(storedProfiles));
+  for (const key of touchedSizes) {
+    const i = key.lastIndexOf("::");
+    const person = key.slice(0, i), cat = key.slice(i + 2);
+    out[person] = out[person] || {};
+    out[person][cat] = ((state.profiles[person] || {})[cat] || []).slice();
+  }
+  return out;
+}
+
+// Another surface (the popup) changed the record: adopt it, unless this page has
+// unsaved edits, which adopting would silently discard.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes.refine || !isClean()) return;
+  state = Object.assign(structuredClone(DEFAULTS), changes.refine.newValue || {});
+  if (!Array.isArray(state.colours)) state.colours = [];
+  if (!state.profiles || !Object.keys(state.profiles).length) state.profiles = structuredClone(DEFAULTS.profiles);
+  renderAll();
+});
+
 // events
 $("addPerson").addEventListener("click", () => {
   collectSizeText();
   let n = "person"; let i = 2;
   while (state.profiles[n]) n = "person " + i++;
   state.profiles[n] = {};
+  structural = true;
   renderAll();
 });
-$("who").addEventListener("change", () => { state.who = $("who").value; });
-$("category").addEventListener("change", () => { state.category = $("category").value; });
+$("who").addEventListener("change", () => { state.who = $("who").value; mark("who"); });
+$("brands").addEventListener("input", () => mark("brands"));
+$("tier3").addEventListener("change", () => mark("tier3"));
+$("category").addEventListener("change", () => { state.category = $("category").value; mark("category"); });
 $("hideMode").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-val]");
   if (!b) return;
-  state.hideMode = b.dataset.val; renderHideMode();
+  state.hideMode = b.dataset.val; mark("hideMode"); renderHideMode();
 });
 
 $("save").addEventListener("click", async () => {
   collectSizeText();
   const stored = (await chrome.storage.local.get("refine")).refine || {};
-  const next = Object.assign({}, DEFAULTS, stored, {
-    profiles: state.profiles,
+  const mine = {
     who: state.who,
     category: state.category,
     brands: splitList($("brands").value),
     colours: state.colours.map((c) => c.toLowerCase()),
     hideMode: state.hideMode,
     tier3: $("tier3").checked,
-  });
+  };
+  const next = Object.assign({}, DEFAULTS, stored);
+  for (const f of touchedFields) if (f in mine) next[f] = mine[f];
+  next.profiles = mergeProfiles(stored.profiles);
   await chrome.storage.local.set({ refine: next });
   state = next;
   const s = $("status"); s.hidden = false;
