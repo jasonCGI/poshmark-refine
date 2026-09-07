@@ -540,9 +540,20 @@
     // tiles === 0 on a results page means our selectors no longer match, i.e.
     // Poshmark reskinned. Report it so the popup can say so instead of the
     // extension silently doing nothing.
+    // Run the same assertions a human at a browser would, every time the popup
+    // opens. Both bugs shipped in 0.15.0 were of this shape: visible on the
+    // page in seconds, invisible to every fixture test.
+    let problems = [];
+    try {
+      problems = G.selfCheck(document, SEL, {
+        view: { width: window.innerWidth, height: window.innerHeight },
+        hud: document.getElementById("pmr-hud"),
+      });
+    } catch (e) { /* a broken check must never break the status reply */ }
     respond({
       active: !!(intent.sizes || intent.brands || intent.colours || intent.colourTerms || intent.maxPrice || intent.conditions),
       tiles: countTiles(grids),
+      problems,
       ...counts,
     });
   });

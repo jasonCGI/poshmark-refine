@@ -11,15 +11,59 @@
 // published list of a brand's current and former colourways, and inventing one
 // would be confidently wrong.
 
-/** Hostname -> the brand it sells. Adding a brand is one line. */
+/**
+ * Hostname -> the brand it sells.
+ *
+ * Deliberately short. Shipping a long list would mean shipping brands nobody
+ * verified against a real product page, which is the guessing this whole
+ * library refuses to do. Instead the shopper adds the sites they actually
+ * shop: see `sitesWith()` below, and the per-site permission the extension
+ * asks for at the moment they add one.
+ *
+ * An entry may name its brand or not. When it does not, the brand is read from
+ * the page's own JSON-LD, which is more authoritative than anything we could
+ * hardcode anyway.
+ */
 export const BRAND_SITES = {
   "vuoriclothing.com": { brand: "Vuori" },
 };
 
+/** Strip a scheme, a path and a www. to leave a bare, comparable hostname. */
+export function hostKey(input) {
+  let h = String(input || "").trim().toLowerCase();
+  if (!h) return "";
+  if (h.includes("://")) { try { h = new URL(h).hostname; } catch (e) { return ""; } }
+  else h = h.split("/")[0];
+  return h.replace(/^www\./, "");
+}
+
+/** The built-in sites plus the shopper's own, theirs winning on a clash. */
+export function sitesWith(extra) {
+  const out = Object.assign({}, BRAND_SITES);
+  for (const [host, v] of Object.entries(extra || {})) {
+    const k = hostKey(host);
+    if (k) out[k] = v || {};
+  }
+  return out;
+}
+
 /** Look up a host, tolerating a www. prefix. Unknown host -> null, never a guess. */
-export function brandForHost(hostname) {
-  const h = String(hostname || "").toLowerCase().replace(/^www\./, "");
-  return BRAND_SITES[h] || null;
+export function brandForHost(hostname, extra) {
+  const k = hostKey(hostname);
+  return (extra ? sitesWith(extra) : BRAND_SITES)[k] || null;
+}
+
+/**
+ * The brand as the PAGE states it. Schema.org allows a bare string or a
+ * Brand/Organization object, so both are read; anything else is not a brand
+ * name we are willing to invent.
+ */
+export function brandFromJsonLd(product) {
+  const b = product && product.brand;
+  if (!b) return null;
+  if (typeof b === "string") return b.trim() || null;
+  if (typeof b === "object" && typeof b.name === "string") return b.name.trim() || null;
+  return null;
 }
 
 const SIZE_TOKEN = /^(XXS|XS|S|M|L|XL|XXL|XXXL|[1-5]X|\d{1,2}(?:\.5)?)$/i;
@@ -106,8 +150,8 @@ function readSizes(doc, product) {
  * colourway is unknown, not colourless, and the caller simply does not filter on
  * one.
  */
-export function extractProduct(doc, hostname) {
-  const site = brandForHost(hostname);
+export function extractProduct(doc, hostname, extra) {
+  const site = brandForHost(hostname, extra);
   if (!site || !doc) return null;
 
   const product = jsonLdObjects(doc).find((o) => typeOf(o).includes("Product"));
@@ -119,8 +163,13 @@ export function extractProduct(doc, hostname) {
   if (!name && product && product.name) name = stripVariantSuffix(product.name, colour);
   if (!name) return null;
 
+  // A site the shopper added names no brand, so the page speaks for itself.
+  // A built-in entry still wins, because it is the checked spelling.
+  const brand = site.brand || brandFromJsonLd(product);
+  if (!brand) return null;   // without a brand there is no useful Poshmark search
+
   return {
-    brand: site.brand,
+    brand,
     name,
     colour,
     sizes: readSizes(doc, product),

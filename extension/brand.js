@@ -85,9 +85,22 @@
     (h1.parentElement || h1).insertBefore(btn, h1.nextSibling);
   }
 
+  // The shopper's own brand sites sit alongside the built-in ones. Held in a
+  // variable and refreshed on change rather than read inside sync(): sync runs
+  // every 1.5s, and hitting storage 40 times a minute to learn something that
+  // changes about twice a year is not a trade worth making.
   let lastKey = "";
+  let userSites = {};
+  try { userSites = (await chrome.storage.local.get("brandSites")).brandSites || {}; } catch (e) {}
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local" || !changes.brandSites) return;
+    userSites = changes.brandSites.newValue || {};
+    lastKey = "";      // re-evaluate this page under the new list
+    sync();
+  });
+
   function sync() {
-    const product = extractProduct(document, location.hostname);
+    const product = extractProduct(document, location.hostname, userSites);
     if (!product) {
       // Nothing resolved YET. These pages hydrate after load, so do not record
       // this URL as handled - marking it done here meant a late-arriving product

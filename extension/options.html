@@ -58,6 +58,14 @@
 
   /* chips (sizes quick-add + colours) */
   .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .row { display: flex; gap: 7px; align-items: center; }
+  .site { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line);
+          border-radius: 999px; padding: 4px 6px 4px 11px; font-size: 13px; background: var(--card); }
+  .site b { font-weight: 600; }
+  .site .host { color: var(--muted); font-size: 12px; }
+  .site button { font: inherit; cursor: pointer; border: 0; background: none; color: var(--muted);
+                 font-size: 15px; line-height: 1; padding: 0 4px; }
+  .site button:hover { color: var(--ink); }
   .chip {
     font: inherit; font-size: 13px; cursor: pointer; user-select: none;
     border: 1px solid var(--line); background: var(--card); color: var(--ink);
@@ -127,6 +135,25 @@
           <p class="hint">Optional. Pick any. Matched against the title, and the listing colour on hover.</p>
         </div>
       </div>
+    </section>
+
+    <section>
+      <h2>Brand sites</h2>
+      <p class="hint" style="margin:0 0 10px">
+        On a brand's own product page, Refine can offer to find that exact item on
+        Poshmark, carrying the colourway and your size across. Vuori works out of
+        the box. Add any other brand you shop and Chrome will ask you to allow
+        that one site; the brand name is read from the page itself.
+      </p>
+      <div class="field">
+        <label for="bsUrl">Add a brand site</label>
+        <div class="row">
+          <input id="bsUrl" type="text" placeholder="https://www.aloyoga.com/products/..." style="flex:1">
+          <button id="bsAdd" class="btn" type="button">Add</button>
+        </div>
+        <span class="hint" id="bsMsg"></span>
+      </div>
+      <div id="bsList" class="chips"></div>
     </section>
 
     <section style="border-bottom:0">

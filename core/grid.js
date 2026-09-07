@@ -241,3 +241,80 @@ export function clampToViewport(left, top, elW, elH, viewW, viewH, margin = 6) {
     top: Math.max(margin, Math.min(Math.max(margin, viewH - elH - margin), top)),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Self-check.
+//
+// Written after a session in which 95 passing tests missed the two worst bugs
+// in the product: a HUD restored outside the viewport where it could not be
+// dragged back, and 35 of 48 covers left blank by the lazy-load handoff that
+// re-sorting interrupts - including every card that MATCHED. Both were obvious
+// within seconds of looking at a real page and invisible to every fixture test,
+// because a fixture cannot have a viewport, a scroll position or a real image.
+//
+// So these are the assertions that needed a human at a browser, made routine.
+// Geometry is injected rather than read from `window` so jsdom can drive it.
+
+/**
+ * Inspect a live results page and report what is wrong with it.
+ *
+ * @param root   document (or any subtree)
+ * @param SEL    the selector map
+ * @param opts   { rectOf, view: {width, height}, hud }
+ * @returns array of { id, bad, detail }; empty means healthy.
+ */
+export function selfCheck(root, SEL, opts = {}) {
+  const rectOf = opts.rectOf || ((el) => el.getBoundingClientRect());
+  const view = opts.view || { width: 0, height: 0 };
+  const out = [];
+  const add = (id, bad, detail) => { if (bad) out.push({ id, bad: true, detail }); };
+
+  const tiles = allTiles(root, SEL);
+
+  // Poshmark reskinned and our selectors match nothing. Everything below would
+  // report a clean bill of health on an empty set, so this returns early: zero
+  // problems found across zero cards is not the same as working.
+  if (!tiles.length) {
+    return [{ id: "selectors", bad: true, detail: "no cards matched our selectors" }];
+  }
+
+  const unjudged = tiles.filter((t) => !t.dataset.pmrSeen);
+  add("unjudged", unjudged.length > 0,
+      unjudged.length + " of " + tiles.length + " cards were never judged");
+
+  const inView = (el) => {
+    const r = rectOf(el);
+    return r.bottom > 0 && r.top < view.height && r.right > 0 && r.left < view.width;
+  };
+
+  // The bug that shipped: a card the shopper can see, with a cover the page
+  // prepared and our re-sort stopped from ever loading.
+  const blank = tiles.filter((t) => inView(t) && hasPendingLazy(t));
+  add("covers", blank.length > 0,
+      blank.length + " visible " + (blank.length === 1 ? "cover" : "covers") + " never loaded");
+
+  // The other bug that shipped. A HUD outside the viewport cannot be dragged
+  // back, because the thing you drag is the HUD.
+  if (opts.hud) {
+    const r = rectOf(opts.hud);
+    add("hud", r.bottom > view.height || r.top < 0 || r.right > view.width || r.left < 0,
+        "the summary is off-screen and cannot be dragged back");
+  }
+
+  // The v0.7.x regression class: a badge that paints outside its own card ends
+  // up over Poshmark's menus.
+  const escaped = [...root.querySelectorAll(".pmr-badge")].filter((b) => {
+    const tile = b.closest(SEL.tile);
+    if (!tile) return true;
+    const br = rectOf(b), tr = rectOf(tile);
+    return br.left < tr.left - 1 || br.top < tr.top - 1 || br.right > tr.right + 1 || br.bottom > tr.bottom + 1;
+  });
+  add("badges", escaped.length > 0, escaped.length + " badges paint outside their card");
+
+  // A tile in no detected grid never gets sorted, and used to schedule a pass
+  // every frame forever.
+  const orphans = orphanTiles(root, SEL);
+  add("orphans", orphans.length > 0, orphans.length + " cards sit outside any grid");
+
+  return out;
+}

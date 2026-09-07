@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Poshmark Refine",
-  "version": "0.15.2",
+  "version": "0.16.0",
   "description": "Makes Poshmark search respect the size, brand and colour you asked for. Works only on the page you loaded; sends nothing anywhere.",
   "permissions": [
-    "storage"
+    "storage",
+    "scripting"
   ],
   "host_permissions": [
     "https://poshmark.com/*",
@@ -60,8 +61,7 @@
         "core/search.js"
       ],
       "matches": [
-        "https://vuoriclothing.com/*",
-        "https://www.vuoriclothing.com/*"
+        "https://*/*"
       ]
     }
   ],
@@ -72,5 +72,8 @@
   "action": {
     "default_title": "Poshmark Refine",
     "default_popup": "extension/popup.html"
-  }
+  },
+  "optional_host_permissions": [
+    "https://*/*"
+  ]
 }

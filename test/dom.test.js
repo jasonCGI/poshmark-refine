@@ -12,10 +12,11 @@ import { JSDOM } from "jsdom";
 import {
   text, findGrids, wrapperOf, plan, resort, signatureOf, isOurs,
   shouldReapply, countStates, countTiles, allTiles, orphanTiles,
-  hasPendingLazy, promoteLazy, clampToViewport,
+  hasPendingLazy, promoteLazy, clampToViewport, selfCheck,
 } from "../core/grid.js";
 import {
   extractProduct, brandForHost, guessCategory, stripVariantSuffix, searchQueryFor,
+  hostKey, sitesWith, brandFromJsonLd,
 } from "../core/brand.js";
 import { poshmarkSearchUrl } from "../core/search.js";
 
@@ -419,4 +420,134 @@ test("clamping holds at both edges and when the box is bigger than the window", 
   const tiny = clampToViewport(16, 100, 453, 39, 300, 20);
   assert.equal(tiny.top, 6);
   assert.equal(tiny.left, 6);
+});
+
+// --- the self-check: today's two bugs, made into assertions ---------------
+// Geometry is injected, so a fixture CAN have a viewport for once.
+const VIEW = { width: 1000, height: 800 };
+const rect = (x, y, w, h) => ({ left: x, top: y, right: x + w, bottom: y + h, width: w, height: h });
+
+function checkPage(html, { rects = new Map(), hud = null } = {}) {
+  const dom = new JSDOM(html);
+  const doc = dom.window.document;
+  const rectOf = (el) => rects.get(el) || rects.get(el.className) || rect(0, 0, 200, 300);
+  const found = selfCheck(doc, SEL, { rectOf, view: VIEW, hud: hud && doc.querySelector(hud) });
+  return { doc, found, ids: found.map((f) => f.id) };
+}
+
+test("a healthy page reports nothing at all", () => {
+  const { ids } = checkPage(`<div class="results">
+    <div class="tile-grid-redesign" data-pmr-seen="1"><a class="tile__covershot" href="/x"><picture><img src="https://cdn/a.jpg"></picture></a></div>
+    <div class="tile-grid-redesign" data-pmr-seen="1"><a class="tile__covershot" href="/y"><picture><img src="https://cdn/b.jpg"></picture></a></div>
+  </div>`);
+  assert.deepEqual(ids, [], "silence is the healthy state");
+});
+
+test("selectors matching nothing is reported, and short-circuits", () => {
+  const { ids, found } = checkPage(`<div class="results"><article>Poshmark reskinned</article></div>`);
+  assert.deepEqual(ids, ["selectors"]);
+  assert.equal(found.length, 1, "zero problems across zero cards is not a clean bill of health");
+});
+
+test("BUG 0.15.0: a visible cover the re-sort never let load", () => {
+  // exactly the shape measured live: data-src present, src absent
+  const { ids, found } = checkPage(`<div class="results">
+    <div class="tile-grid-redesign" data-pmr-seen="1"><a class="tile__covershot" href="/x"><picture>
+      <source data-srcset="https://cdn/a.webp"><img data-src="https://cdn/a.jpg"></picture></a></div>
+    <div class="tile-grid-redesign" data-pmr-seen="1"><a class="tile__covershot" href="/y"><picture><img src="https://cdn/b.jpg"></picture></a></div>
+  </div>`);
+  assert.ok(ids.includes("covers"));
+  assert.match(found.find((f) => f.id === "covers").detail, /1 visible cover never loaded/);
+});
+
+test("a blank cover BELOW the fold is not a fault - it loads when scrolled to", () => {
+  const dom = new JSDOM(`<div class="results">
+    <div class="tile-grid-redesign" data-pmr-seen="1"><a class="tile__covershot" href="/x"><picture><img data-src="https://cdn/a.jpg"></picture></a></div>
+  </div>`);
+  const doc = dom.window.document;
+  const offscreen = rect(0, 2000, 200, 300);   // far below an 800px viewport
+  const found = selfCheck(doc, SEL, { rectOf: () => offscreen, view: VIEW });
+  assert.deepEqual(found.map((f) => f.id), [], "not loading what nobody can see is correct behaviour");
+});
+
+test("BUG 0.15.0: the summary stranded outside the viewport", () => {
+  const dom = new JSDOM(`<div class="results">
+    <div class="tile-grid-redesign" data-pmr-seen="1"><a class="tile__covershot" href="/x"><picture><img src="https://cdn/a.jpg"></picture></a></div>
+  </div><div id="pmr-hud">Refine</div>`);
+  const doc = dom.window.document;
+  const hud = doc.getElementById("pmr-hud");
+  // the measured failure: 453x39 at top 864 in an 839px window
+  const rectOf = (el) => (el === hud ? rect(16, 864, 453, 39) : rect(0, 0, 200, 300));
+  const found = selfCheck(doc, SEL, { rectOf, view: { width: 1707, height: 839 }, hud });
+  assert.ok(found.map((f) => f.id).includes("hud"));
+  // and once clamped, it stops complaining
+  const fixed = clampToViewport(16, 864, 453, 39, 1707, 839);
+  const rectOf2 = (el) => (el === hud ? rect(fixed.left, fixed.top, 453, 39) : rect(0, 0, 200, 300));
+  assert.ok(!selfCheck(doc, SEL, { rectOf: rectOf2, view: { width: 1707, height: 839 }, hud })
+    .map((f) => f.id).includes("hud"), "the clamp fixes what the check reports");
+});
+
+test("an unjudged card, and a badge painting outside its own card", () => {
+  const dom = new JSDOM(`<div class="results">
+    <div class="tile-grid-redesign"><a class="tile__covershot" href="/x"><picture><img src="https://cdn/a.jpg"></picture></a></div>
+    <div class="tile-grid-redesign" data-pmr-seen="1"><a class="tile__covershot" href="/y"><picture><img src="https://cdn/b.jpg"></picture></a>
+      <span class="pmr-badge">Off</span></div>
+  </div>`);
+  const doc = dom.window.document;
+  const badge = doc.querySelector(".pmr-badge");
+  // badge escaping upward, which is how it landed on Poshmark's mega-menu
+  const rectOf = (el) => (el === badge ? rect(10, -40, 40, 18) : rect(0, 0, 200, 300));
+  const ids = selfCheck(doc, SEL, { rectOf, view: VIEW }).map((f) => f.id);
+  assert.ok(ids.includes("unjudged"));
+  assert.ok(ids.includes("badges"));
+});
+
+// --- brand sites the shopper adds ----------------------------------------
+test("a pasted product URL, a bare host and a www host all name the same site", () => {
+  assert.equal(hostKey("https://www.aloyoga.com/products/airbrush-legging"), "aloyoga.com");
+  assert.equal(hostKey("aloyoga.com"), "aloyoga.com");
+  assert.equal(hostKey("WWW.AloYoga.com/products/x"), "aloyoga.com");
+  assert.equal(hostKey("  https://shop.example.co.uk/p/1  "), "shop.example.co.uk");
+  assert.equal(hostKey(""), "", "nothing in, nothing out - never a guess");
+  assert.equal(hostKey("not a url at all"), "not a url at all".split("/")[0]);
+});
+
+test("the shopper's sites join the built-in ones without displacing them", () => {
+  const merged = sitesWith({ "https://www.aloyoga.com/products/x": {} });
+  assert.ok(merged["vuoriclothing.com"], "built-ins survive");
+  assert.ok(merged["aloyoga.com"], "and the pasted URL was reduced to a host");
+  assert.equal(brandForHost("www.aloyoga.com", { "aloyoga.com": {} }) !== null, true);
+  assert.equal(brandForHost("aloyoga.com"), null, "unknown without the extra list, still no guess");
+});
+
+test("a brand is read from the page when the site entry does not name one", () => {
+  assert.equal(brandFromJsonLd({ brand: "Alo Yoga" }), "Alo Yoga");
+  assert.equal(brandFromJsonLd({ brand: { "@type": "Brand", name: "Alo Yoga" } }), "Alo Yoga");
+  assert.equal(brandFromJsonLd({ brand: { name: "  " } }), null);
+  assert.equal(brandFromJsonLd({}), null);
+  assert.equal(brandFromJsonLd(null), null);
+});
+
+test("an added site works end to end, and a nameless one is refused", () => {
+  const page = (ld) => new JSDOM(`<h1>Airbrush High-Waist Legging</h1>
+    <script type="application/ld+json">${JSON.stringify(ld)}</script>`).window.document;
+
+  const ok = extractProduct(
+    page({ "@type": "Product", name: "Airbrush Legging - Black", color: "Black", brand: { name: "Alo Yoga" } }),
+    "www.aloyoga.com", { "aloyoga.com": {} });
+  assert.equal(ok.brand, "Alo Yoga", "brand came from the page, not from us");
+  assert.equal(ok.name, "Airbrush High-Waist Legging", "h1 still wins over the variant name");
+  assert.equal(ok.colour, "Black");
+  assert.equal(ok.category, "bottoms");
+
+  // No brand anywhere: a Poshmark search for a bare product name would return
+  // every brand's version of it, so we decline rather than mislead.
+  const nameless = extractProduct(
+    page({ "@type": "Product", name: "Airbrush Legging" }), "www.aloyoga.com", { "aloyoga.com": {} });
+  assert.equal(nameless, null);
+
+  // A built-in entry keeps its checked spelling even if the page disagrees.
+  const builtin = extractProduct(
+    page({ "@type": "Product", name: "Cami", brand: { name: "VUORI CLOTHING INC" } }), "vuoriclothing.com");
+  assert.equal(builtin.brand, "Vuori");
 });

@@ -4,6 +4,7 @@
 // reads. A person holds sizes for SEVERAL categories at once, because a top, a
 // pair of jeans and a shoe are measured in different systems.
 import { CATEGORY_SIZES, CATEGORIES, COLOUR_FAMILIES, BRAND_ALIASES } from "../core/normalize.js";
+import { hostKey } from "../core/brand.js";
 
 const DEFAULTS = {
   profiles: { me: {} },
@@ -282,3 +283,88 @@ $("save").addEventListener("click", async () => {
   }
   renderAll();
 })();
+
+// ---- brand sites the shopper adds -------------------------------------------
+// Stored apart from `refine` because this is not a search preference: it is a
+// list of hosts Chrome has granted us. Keeping it separate means the merge
+// logic that protects concurrent edits to `refine` never has to reason about
+// permissions, and revoking a site cannot disturb a size profile.
+const originsFor = (host) => ["https://" + host + "/*", "https://*." + host + "/*"];
+
+async function getSites() {
+  try { return (await chrome.storage.local.get("brandSites")).brandSites || {}; } catch (e) { return {}; }
+}
+
+function bsMsg(text, bad) {
+  const el = $("bsMsg");
+  el.textContent = text || "";
+  el.style.color = bad ? "#c0392b" : "";
+}
+
+async function renderSites() {
+  const sites = await getSites();
+  const list = $("bsList");
+  list.innerHTML = "";
+  const hosts = Object.keys(sites).sort();
+  if (!hosts.length) {
+    list.innerHTML = '<span class="hint">No extra sites yet. Vuori is built in.</span>';
+    return;
+  }
+  for (const host of hosts) {
+    const granted = await chrome.permissions.contains({ origins: originsFor(host) }).catch(() => false);
+    const chip = document.createElement("span");
+    chip.className = "site";
+    // Permission can be revoked in Chrome's own settings without telling us, so
+    // report what is actually true rather than what we stored.
+    chip.innerHTML = "<b>" + esc(sites[host].brand || host) + "</b>" +
+      '<span class="host">' + esc(host) + (granted ? "" : " &middot; not allowed") + "</span>";
+    const x = document.createElement("button");
+    x.type = "button";
+    x.title = "Remove " + host;
+    x.textContent = "×";
+    x.addEventListener("click", () => removeSite(host));
+    chip.appendChild(x);
+    list.appendChild(chip);
+  }
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function addSite() {
+  const host = hostKey($("bsUrl").value);
+  if (!host || !host.includes(".")) { bsMsg("That does not look like a website address.", true); return; }
+  if (host === "poshmark.com") { bsMsg("Poshmark is the other side of the bridge, not a brand site.", true); return; }
+
+  // The permission request must be the FIRST thing the click does, or Chrome
+  // rejects it as not being in response to a user gesture.
+  let granted = false;
+  try { granted = await chrome.permissions.request({ origins: originsFor(host) }); } catch (e) {}
+  if (!granted) { bsMsg("Chrome did not allow " + host + ", so nothing was added.", true); return; }
+
+  const sites = await getSites();
+  // No brand name here on purpose: the product page states its own, and the
+  // page is a better authority than anything typed into this box.
+  sites[host] = {};
+  await chrome.storage.local.set({ brandSites: sites });
+  $("bsUrl").value = "";
+  bsMsg("Added " + host + ". Open one of its product pages to see the button.");
+  renderSites();
+}
+
+async function removeSite(host) {
+  const sites = await getSites();
+  delete sites[host];
+  await chrome.storage.local.set({ brandSites: sites });
+  // Hand the permission back. Leaving it granted for a site we no longer read
+  // would be holding access we have no use for.
+  try { await chrome.permissions.remove({ origins: originsFor(host) }); } catch (e) {}
+  bsMsg("Removed " + host + ".");
+  renderSites();
+}
+
+$("bsAdd").addEventListener("click", addSite);
+$("bsUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addSite(); } });
+renderSites();

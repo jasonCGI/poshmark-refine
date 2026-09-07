@@ -193,6 +193,9 @@ listed here so the spec does not read as though the tool stopped there.
 | 0.13.0 | colour precedence: the title and the listing's coarse colour field are not equal evidence |
 | 0.14.0 | optional on-device AI tier, behind everything deterministic, fills-only |
 | 0.15.0 | every category sends a facet read off Poshmark's own category links |
+| 0.15.1 | two bugs found by looking at a real page: a HUD restored outside the viewport, and 35 of 48 covers left blank by the lazy-load handoff re-sorting interrupts |
+| 0.15.2 | the update bar states the two steps instead of linking to a page that does not answer the question |
+| 0.16.0 | a self-check that runs those live assertions on every popup open; brand sites the shopper adds, with a per-site permission |
 
 Also built and not in the original slice: per-category size profiles (a person
 is not one size), a search box in the popup, and an opt-in daily update check.
@@ -202,6 +205,12 @@ actually fitted, so no brand-level size learning exists.
 
 ## Open questions
 
+0. **`core/brand.js` and `core/search.js` are now web-accessible to `https://*/*`,**
+   because a site the shopper adds cannot be known at build time. Any page can
+   therefore fetch those two files and learn the extension is installed. The
+   fix is `use_dynamic_url: true` on that resource entry, which serves them at
+   a rotating URL; it was not taken yet because it would also change the
+   working Vuori path and wants live verification before it ships.
 1. **Chrome only, or Chrome + Edge + Firefox?** MV3 differences are small for
    this shape, but Firefox needs a separate store listing.
 2. **Distribution.** Loaded unpacked today, which cannot auto-update - the

@@ -339,6 +339,7 @@ async function refreshStatus() {
   }
   try {
     const r = await chrome.tabs.sendMessage(tab.id, { type: "pmr:status" });
+    showProblems(r && r.problems);
     if (r && r.tiles === 0) {
       // We are on a results page but matched nothing at all: Poshmark changed
       // its markup. Say so - silence would look like the extension working.
@@ -349,8 +350,26 @@ async function refreshStatus() {
       setStatus("On this page, but nothing to filter by yet. Set a size, brand or colour and Save.", false);
     }
   } catch (e) {
+    showProblems(null);
     setStatus("Refresh this page once to start filtering.", false, true, tab.id);
   }
+}
+
+// The self-check speaks only when something is wrong. A health panel that says
+// "all good" on every open is one you stop reading, and then it is worth
+// nothing on the day it has something to say.
+function showProblems(problems) {
+  const box = $("selfcheck");
+  if (!problems || !problems.length) { box.hidden = true; box.innerHTML = ""; return; }
+  box.innerHTML = "<b>Not working right on this page</b><ul>" +
+    problems.map((p) => "<li>" + escapeHtml(p.detail) + "</li>").join("") +
+    "</ul>";
+  box.hidden = false;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 // ---- events ------------------------------------------------------------------

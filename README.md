@@ -52,8 +52,11 @@ corner. Clicking a card's badge lets you correct it, and the correction teaches
 the *word* - so "Bay Blue" is understood on every future card, not just that
 one.
 
-**On a brand's product page** (Vuori today) the extension offers to find that
-exact item on Poshmark, carrying the colourway and your size across.
+**On a brand's product page** the extension offers to find that exact item on
+Poshmark, carrying the colourway and your size across. Vuori works out of the
+box; add any other brand under Settings and Chrome asks you to allow that one
+site. The brand name is read from the page's own structured data rather than
+from a list we guessed at.
 
 **Two things are off by default** and stay off until you turn them on: reading
 a listing you hover to resolve its colour, and Chrome's on-device AI for cards
@@ -63,21 +66,21 @@ extension makes that is not to Poshmark.
 
 ## Status
 
-Shipping at **v0.15.2**, loaded and used in Chrome.
+Shipping at **v0.16.0**, loaded and used in Chrome.
 
 | piece | state |
 |---|---|
 | `core/normalize.js` | size / brand / colour / price / condition normalisers, each with a confidence |
 | `core/verdict.js` | card -> show / hide / dim, with reasons and the evidence asymmetries above |
-| `core/grid.js` | the DOM layer - grid discovery, tile signatures, idempotent re-sort |
+| `core/grid.js` | the DOM layer - grid discovery, tile signatures, idempotent re-sort, lazy-load repair, self-check |
 | `core/search.js` | builds a Poshmark search URL from verified facets |
-| `core/brand.js` | reads a product off a brand's own page (JSON-LD), maps it to a search |
+| `core/brand.js` | reads a product off a brand's own page (JSON-LD), maps it to a search; any site the shopper adds |
 | `core/presets.js` | saved searches |
 | `core/ai.js` | optional on-device Prompt API tier, last and fills-only |
 | `core/update.js` | opt-in update check |
 | `extension/` | content script, brand-page script, popup, options, service worker |
 | `fixtures/` | 48 captured result rows (text) + a real grid fragment (DOM) |
-| `test/` | **95 tests** - `core.test.js` against fixture text, `dom.test.js` in jsdom against the shipped modules |
+| `test/` | **105 tests** - `core.test.js` against fixture text, `dom.test.js` in jsdom against the shipped modules |
 
 The DOM tests import `core/grid.js`, which is the same module the content
 script imports, so the tests exercise shipped code rather than a copy of it.
@@ -86,7 +89,7 @@ Poshmark changes its markup, those tests fail before you find out on the site.
 
 ```
 npm install     # jsdom, for the DOM tests
-npm test        # 95 passing
+npm test        # 105 passing
 ```
 
 Node 20+ (uses `node:test`). jsdom is the only dependency, and it is dev-only -

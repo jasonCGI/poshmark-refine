@@ -66,6 +66,14 @@
   .upbar .upsteps { font-size: 11.5px; opacity: .85; }
   .upbar button { margin-left: auto; }
   .upbar button { font: inherit; cursor: pointer; background: none; border: 0; color: inherit; font-size: 15px; line-height: 1; padding: 0 2px; }
+  /* Self-check findings. Red, because every one of these is the extension
+     failing at its job on the page you are looking at right now. */
+  .selfcheck { margin: 8px 14px 0; padding: 8px 10px; border-radius: 8px; font-size: 12px;
+               background: color-mix(in srgb, #c0392b 10%, var(--card));
+               border: 1px solid color-mix(in srgb, #c0392b 55%, var(--line)); color: var(--ink); }
+  .selfcheck b { display: block; margin-bottom: 3px; }
+  .selfcheck ul { margin: 0; padding-left: 16px; }
+  .selfcheck li { margin: 1px 0; }
   .pstatus .mini { font: inherit; font-weight: 600; cursor: pointer; margin-left: auto; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; }
 </style>
 </head>
@@ -83,6 +91,7 @@
     <button id="updismiss" type="button" title="Dismiss">&times;</button>
   </div>
   <div class="pstatus" id="pagestatus"><span class="led"></span><span id="pstext">Checking this page&hellip;</span></div>
+  <div class="selfcheck" id="selfcheck" hidden></div>
   <div class="body">
     <h2>Saved searches <span id="prCount" class="sub"></span></h2>
     <div id="presets" class="chips"></div>
