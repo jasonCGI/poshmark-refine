@@ -1,25 +1,43 @@
 {
   "manifest_version": 3,
   "name": "Poshmark Refine",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "description": "Makes Poshmark search respect the size, brand and colour you asked for. Works only on the page you loaded; sends nothing anywhere.",
-  "permissions": ["storage"],
-  "host_permissions": ["https://poshmark.com/*"],
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://poshmark.com/*"
+  ],
   "background": {
     "service_worker": "extension/sw.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://poshmark.com/search*", "https://poshmark.com/category/*", "https://poshmark.com/brand/*"],
-      "js": ["extension/content.js"],
-      "css": ["extension/content.css"],
+      "matches": [
+        "https://poshmark.com/search*",
+        "https://poshmark.com/category/*",
+        "https://poshmark.com/brand/*"
+      ],
+      "js": [
+        "extension/content.js"
+      ],
+      "css": [
+        "extension/content.css"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["core/normalize.js", "core/verdict.js"],
-      "matches": ["https://poshmark.com/*"]
+      "resources": [
+        "core/normalize.js",
+        "core/verdict.js",
+        "core/grid.js"
+      ],
+      "matches": [
+        "https://poshmark.com/*"
+      ]
     }
   ],
   "options_ui": {

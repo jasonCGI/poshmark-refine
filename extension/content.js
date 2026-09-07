@@ -11,6 +11,7 @@
   const core = await import(chrome.runtime.getURL("core/verdict.js"));
   const { parseCard, intentFor, verdict, STATE_ORDER } = core;
   const { coloursFromTitle } = await import(chrome.runtime.getURL("core/normalize.js"));
+  const G = await import(chrome.runtime.getURL("core/grid.js"));
 
   const SEL = {
     tile: "div.tile-grid-redesign",
@@ -46,25 +47,22 @@
     attributes: true, attributeFilter: ["href"],
   };
 
-  /** What makes this tile *this listing*. Changes when a card is reused. */
-  function signatureOf(tile) {
-    const link = tile.querySelector(SEL.link);
-    return [
-      text(tile, SEL.title),
-      text(tile, SEL.size),
-      link ? (link.getAttribute("href") || "").split("?")[0] : "",
-    ].join("|");
-  }
 
   async function loadSettings() {
     const stored = await chrome.storage.local.get("refine");
     settings = Object.assign({}, DEFAULTS, stored.refine || {});
   }
 
-  function text(el, sel) {
-    const n = el.querySelector(sel);
-    return n ? n.textContent.replace(/\s+/g, " ").trim() : "";
-  }
+  // The DOM layer lives in core/grid.js so jsdom can drive it in test/dom.test.js.
+  // Bind the selector map once; these ARE the tested functions, not copies.
+  const text = (el, sel) => G.text(el, sel);
+  const findGrids = () => G.findGrids(document, SEL);
+  const resort = (grid) => G.resort(grid, SEL);
+  const signatureOf = (tile) => G.signatureOf(tile, SEL);
+  const countStates = (grids) => G.countStates(grids, SEL);
+  const countTiles = (grids) => G.countTiles(grids, SEL);
+  const shouldReapply = (muts) => G.shouldReapply(muts, SEL);
+
 
   function currentIntent() {
     return intentFor(settings.profiles, settings.who, settings.category, {
@@ -127,27 +125,7 @@
     tile.dataset.pmrColourUnknown = String(card.colours.size === 0 && !!settings.colours.length);
   }
 
-  // Reorder by moving each tile's WRAPPER (the direct child of the grid that
-  // contains it), not the tile itself - the tile lives inside a layout column
-  // and detaching it from that column would break Poshmark's grid.
-  function wrapperOf(tile, grid) {
-    let w = tile;
-    while (w.parentElement && w.parentElement !== grid) w = w.parentElement;
-    return w;
-  }
 
-  function resort(grid) {
-    const tiles = [...grid.querySelectorAll(SEL.tile)];
-    const keyed = tiles.map((t, i) => [Number(t.dataset.pmrOrder || 0), i, wrapperOf(t, grid)]);
-    const sorted = keyed.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    // If the grid is already in this order, touch nothing. Re-appending an
-    // identical order still moves nodes, which destroys any text selection the
-    // shopper has made and generates pointless mutations.
-    let same = sorted.length === keyed.length;
-    for (let i = 0; same && i < sorted.length; i++) if (sorted[i] !== keyed[i]) same = false;
-    if (same) return;
-    for (const [, , w] of sorted) grid.appendChild(w);
-  }
 
   // Tier 3: on hover, read the listing page under the pointer for its colour.
   // One request in flight at a time; cached per tab; never triggered by scroll.
@@ -182,25 +160,6 @@
     apply();
   }
 
-  // The grid is the nearest ancestor of a result tile that holds more than one
-  // tile. Poshmark wraps each tile in its own layout column (col-x12 col-l6 ...),
-  // so a tile's immediate parent is NOT the grid - walk up until we find the real
-  // container (currently .tiles_container). Falls back to the immediate parent.
-  // Every result container on the page, not just the first. Poshmark wraps each
-  // tile in its own layout column, so a tile's parent is NOT the grid; walk up to
-  // the nearest ancestor holding more than one tile. Doing this per tile finds a
-  // second results section too. Keep only innermost containers, so a wrapper that
-  // happens to contain both sections is not returned instead of them.
-  function findGrids() {
-    const found = new Set();
-    for (const t of document.querySelectorAll(SEL.tile)) {
-      let g = t.parentElement;
-      while (g && g.querySelectorAll(SEL.tile).length < 2) g = g.parentElement;
-      if (g) found.add(g); else if (t.parentElement) found.add(t.parentElement);
-    }
-    const all = [...found];
-    return all.filter((g) => !all.some((o) => o !== g && g.contains(o)));
-  }
 
   // A quiet fixed summary: how many matched, need a colour check, or were hidden,
   // plus a toggle to reveal the hidden cards without leaving the search.
@@ -275,19 +234,6 @@
     return hud;
   }
 
-  /** Tally verdict states across every results container on the page. */
-  function countStates(grids) {
-    const counts = { show: 0, dim: 0, hide: 0 };
-    for (const grid of grids) {
-      for (const t of grid.querySelectorAll(SEL.tile)) {
-        const s = t.classList.contains("pmr-show") ? "show"
-          : t.classList.contains("pmr-dim") ? "dim"
-          : t.classList.contains("pmr-hide") ? "hide" : null;
-        if (s) counts[s]++;
-      }
-    }
-    return counts;
-  }
 
   function updateHud(grids) {
     const intent = currentIntent();
@@ -337,36 +283,13 @@
   // not news, and treating it as news is an infinite apply -> resort -> observe
   // loop that freezes the tab. Coalesce bursts into one pass per frame.
   let queued = false;
-  /** Is this mutation one of ours? Our badge/strip/HUD writes must never feed back. */
-  function isOurs(node) {
-    const el = node && (node.nodeType === 1 ? node : node.parentElement);
-    return !!(el && el.closest && el.closest(".pmr-strip, .pmr-badge, #pmr-hud"));
-  }
   mo = new MutationObserver((muts) => {
     if (applying) return;
-    let stale = false;
-    for (const m of muts) {
-      if (isOurs(m.target)) continue;
-      // (a) genuinely new tiles from infinite scroll
-      for (const n of m.addedNodes) {
-        if (n.nodeType !== 1) continue;
-        const tiles = n.matches?.(SEL.tile) ? [n] : (n.querySelectorAll ? n.querySelectorAll(SEL.tile) : []);
-        for (const t of tiles) if (!t.dataset.pmrSeen) { stale = true; break; }
-        if (stale) break;
-      }
-      if (stale) break;
-      // (b) a tile reused in place - Poshmark swapping the title text or the link
-      // on an existing card. Its marker and verdict describe the OLD listing, so
-      // clear the marker and let apply() re-judge it.
-      const host = m.target && (m.target.nodeType === 1 ? m.target : m.target.parentElement);
-      const tile = host && host.closest ? host.closest(SEL.tile) : null;
-      if (tile && tile.dataset.pmrSeen && signatureOf(tile) !== tile.dataset.pmrSig) {
-        delete tile.dataset.pmrSeen;
-        stale = true;
-        break;
-      }
-    }
-    if (!stale || queued) return;
+    // shouldReapply() ignores our own writes and distinguishes a genuinely new
+    // tile from one we merely re-ordered; it also clears the marker on a card
+    // reused in place so the next pass re-judges it. Treating our own writes as
+    // news is the loop that froze the tab, so this predicate is tested directly.
+    if (!shouldReapply(muts) || queued) return;
     queued = true;
     requestAnimationFrame(() => { queued = false; apply(); });
   });
@@ -382,8 +305,16 @@
   chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     if (!msg || msg.type !== "pmr:status") return;
     const intent = currentIntent();
-    const counts = countStates(findGrids());
-    respond({ active: !!(intent.sizes || intent.brands || intent.colours), ...counts });
+    const grids = findGrids();
+    const counts = countStates(grids);
+    // tiles === 0 on a results page means our selectors no longer match, i.e.
+    // Poshmark reskinned. Report it so the popup can say so instead of the
+    // extension silently doing nothing.
+    respond({
+      active: !!(intent.sizes || intent.brands || intent.colours),
+      tiles: countTiles(grids),
+      ...counts,
+    });
   });
 
   chrome.storage.onChanged.addListener(async (changes) => {

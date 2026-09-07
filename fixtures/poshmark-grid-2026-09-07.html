@@ -1,0 +1,94 @@
+<!-- Captured from a live poshmark.com results page on 2026-09-07.
+     Class names and nesting are verbatim; images, svg and social controls are
+     trimmed. This doubles as the selector-drift canary: if Poshmark renames
+     these classes, test/dom.test.js fails here first and tells us the extension
+     is about to silently stop working.
+
+     Structure that matters:
+       div.tiles_container                       <- the grid
+         div.col-x12.col-l6.col-s8               <- the reorderable wrapper (one per tile)
+           div.tile-grid-redesign                <- the card
+             div.tile-grid-redesign__media--wrapper   <- badge anchor (position:static!)
+               a.tile__covershot[href]
+             div.tile-grid-redesign__meta
+               span.tile-grid-redesign__title
+               div.tile-grid-redesign__condition-wrap
+               div.tile-grid-redesign__size
+               a.tile-grid-redesign__meta-link[href]
+-->
+<div class="tiles_container m--t--1">
+  <div class="col-x12 col-l6 col-s8">
+    <div class="tile-grid-redesign p--t--3 p--b--2 p--h--2">
+      <div class="p--h--3 p--v--0 tile-grid-redesign__media--wrapper">
+        <div class="tile-grid-redesign__media">
+          <a href="/listing/Rails-Sage-Ruffle-Top-aaa1" class="tile__covershot tile-grid-redesign__covershot m--b--2"></a>
+        </div>
+        <div class="tile-grid-redesign__social-overlay"></div>
+      </div>
+      <div class="tile-grid-redesign__meta">
+        <div class="tile-grid-redesign__meta-row">
+          <div class="tile-grid-redesign__meta-title-group">
+            <span class="tile-grid-redesign__title"> Rails Sage Ruffle Top </span>
+          </div>
+          <div class="tile-grid-redesign__condition-wrap"></div>
+        </div>
+        <div class="tile-grid-redesign__meta-row tile-grid-redesign__meta-row--price">
+          <div class="tile-grid-redesign__size">M</div>
+        </div>
+        <a href="/listing/Rails-Sage-Ruffle-Top-aaa1" class="tile-grid-redesign__meta-link"></a>
+      </div>
+    </div>
+  </div>
+  <div class="col-x12 col-l6 col-s8">
+    <div class="tile-grid-redesign p--t--3 p--b--2 p--h--2">
+      <div class="p--h--3 p--v--0 tile-grid-redesign__media--wrapper">
+        <div class="tile-grid-redesign__media">
+          <a href="/listing/Zara-Striped-Top-bbb2" class="tile__covershot tile-grid-redesign__covershot m--b--2"></a>
+        </div>
+      </div>
+      <div class="tile-grid-redesign__meta">
+        <div class="tile-grid-redesign__meta-row">
+          <div class="tile-grid-redesign__meta-title-group">
+            <span class="tile-grid-redesign__title"> Zara Striped Top </span>
+          </div>
+          <div class="tile-grid-redesign__condition-wrap">NWT</div>
+        </div>
+        <div class="tile-grid-redesign__meta-row tile-grid-redesign__meta-row--price">
+          <div class="tile-grid-redesign__size">L</div>
+        </div>
+        <a href="/listing/Zara-Striped-Top-bbb2" class="tile-grid-redesign__meta-link"></a>
+      </div>
+    </div>
+  </div>
+  <div class="col-x12 col-l6 col-s8">
+    <div class="tile-grid-redesign p--t--3 p--b--2 p--h--2">
+      <div class="p--h--3 p--v--0 tile-grid-redesign__media--wrapper">
+        <div class="tile-grid-redesign__media">
+          <a href="/listing/Blouse-ccc3" class="tile__covershot tile-grid-redesign__covershot m--b--2"></a>
+        </div>
+      </div>
+      <div class="tile-grid-redesign__meta">
+        <div class="tile-grid-redesign__meta-row">
+          <div class="tile-grid-redesign__meta-title-group">
+            <span class="tile-grid-redesign__title"> Blouse </span>
+          </div>
+          <div class="tile-grid-redesign__condition-wrap"></div>
+        </div>
+        <div class="tile-grid-redesign__meta-row tile-grid-redesign__meta-row--price">
+          <div class="tile-grid-redesign__size">S</div>
+        </div>
+        <a href="/listing/Blouse-ccc3" class="tile-grid-redesign__meta-link"></a>
+      </div>
+    </div>
+  </div>
+  <!-- an ad tile: no title. It must be marked seen but never decorated, and it
+       must not spin the convergence check. -->
+  <div class="col-x12 col-l6 col-s8">
+    <div class="tile-grid-redesign tile-grid-redesign__ad-wrap p--t--3">
+      <div class="p--h--3 p--v--0 tile-grid-redesign__media--wrapper">
+        <div class="tile-grid-redesign__media"></div>
+      </div>
+      <div class="tile-grid-redesign__meta"></div>
+    </div>
+  </div>
+</div>

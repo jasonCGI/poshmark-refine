@@ -5,7 +5,10 @@
   "description": "Browser extension that enforces size, brand and colour on Poshmark search results, in the shopper's own session. Nothing leaves the machine.",
   "type": "module",
   "scripts": {
-    "test": "node --test test/core.test.js"
+    "test": "node --test test/core.test.js test/dom.test.js"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^30.0.1"
+  }
 }
