@@ -12,6 +12,7 @@ import { JSDOM } from "jsdom";
 import {
   text, findGrids, wrapperOf, plan, resort, signatureOf, isOurs,
   shouldReapply, countStates, countTiles, allTiles, orphanTiles,
+  hasPendingLazy, promoteLazy, clampToViewport,
 } from "../core/grid.js";
 import {
   extractProduct, brandForHost, guessCategory, stripVariantSuffix, searchQueryFor,
@@ -340,4 +341,82 @@ test("the search URL is the shared one, and every facet sent is a verified one",
   // an unknown category still sends nothing rather than risk an empty page
   assert.ok(!poshmarkSearchUrl({ query: "x", category: "hats" }).includes("category="));
   assert.ok(!poshmarkSearchUrl({ query: "x", department: "All" }).includes("department="));
+});
+
+
+// --- the lazy-load handoff our re-sort interrupts -------------------------
+// Shape captured from a live search: <picture> with four <source data-srcset>
+// and an <img data-src>, none of them promoted.
+function lazyTile() {
+  const d = new JSDOM(`<div class="tile-grid-redesign">
+    <div class="tile-grid-redesign__media"><a class="tile__covershot"><div class="img__container"><picture>
+      <source data-srcset="https://cdn/x.webp" type="image/webp">
+      <source data-srcset="https://cdn/x.jpg" type="image/jpeg">
+      <img data-src="https://cdn/x.jpg" alt="Vuori Grey Pullover" class="ovf--h d--b">
+    </picture></div></a></div>
+  </div>`);
+  return d.window.document.querySelector(".tile-grid-redesign");
+}
+
+test("a cover the page prepared but never loaded is detected, and promoted once", () => {
+  const tile = lazyTile();
+  assert.equal(hasPendingLazy(tile), true);
+
+  assert.equal(promoteLazy(tile), true);
+  const img = tile.querySelector("img");
+  assert.equal(img.getAttribute("src"), "https://cdn/x.jpg", "img src is promoted");
+  for (const s of tile.querySelectorAll("source")) {
+    assert.ok(s.getAttribute("srcset"), "every source is promoted, not just the img");
+  }
+  // nothing pending afterwards, so the observer can stop watching it
+  assert.equal(hasPendingLazy(tile), false);
+  assert.equal(promoteLazy(tile), false, "a second call is a no-op");
+});
+
+test("an already-loaded cover is left alone", () => {
+  const tile = lazyTile();
+  promoteLazy(tile);
+  const before = tile.querySelector("img").getAttribute("src");
+  // Poshmark would never re-point a loaded image; neither do we.
+  tile.querySelector("img").setAttribute("data-src", "https://cdn/OTHER.jpg");
+  promoteLazy(tile);
+  assert.equal(tile.querySelector("img").getAttribute("src"), before,
+    "src already set means hands off - we finish a load, we do not redirect one");
+});
+
+test("sources are promoted before the img, so <picture> can still choose", () => {
+  const tile = lazyTile();
+  const order = [];
+  const doc = tile.ownerDocument;
+  const mo = new doc.defaultView.MutationObserver((muts) => {
+    for (const m of muts) order.push(m.target.tagName + ":" + m.attributeName);
+  });
+  mo.observe(tile, { attributes: true, subtree: true });
+  promoteLazy(tile);
+  return new Promise((res) => setTimeout(() => {
+    mo.disconnect();
+    const firstImg = order.findIndex((o) => o.startsWith("IMG"));
+    const lastSource = order.map((o) => o.startsWith("SOURCE")).lastIndexOf(true);
+    assert.ok(lastSource < firstImg,
+      "img src set after every source srcset, else the fallback JPEG wins: " + order.join(","));
+    res();
+  }, 0));
+});
+
+// --- the HUD that walked off the bottom of the screen --------------------
+test("a position saved on a taller window is pulled back into view", () => {
+  // measured live: HUD 453x39 saved at top 864, window since shrunk to 839 tall
+  const p = clampToViewport(16, 864, 453, 39, 1707, 839);
+  assert.equal(p.left, 16, "left was already fine, leave it");
+  assert.equal(p.top, 794, "839 - 39 - 6: back inside, not clipped to 0");
+  assert.ok(p.top + 39 <= 839, "fully visible, so the drag handle is reachable again");
+});
+
+test("clamping holds at both edges and when the box is bigger than the window", () => {
+  assert.deepEqual(clampToViewport(-500, -500, 100, 40, 1000, 800), { left: 6, top: 6 });
+  assert.deepEqual(clampToViewport(9999, 9999, 100, 40, 1000, 800), { left: 894, top: 754 });
+  // a window shorter than the HUD must not pin it ABOVE the top edge
+  const tiny = clampToViewport(16, 100, 453, 39, 300, 20);
+  assert.equal(tiny.top, 6);
+  assert.equal(tiny.left, 6);
 });

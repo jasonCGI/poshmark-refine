@@ -178,3 +178,66 @@ export function countTiles(grids, SEL) {
   for (const grid of grids) n += grid.querySelectorAll(SEL.tile).length;
   return n;
 }
+
+// ---------------------------------------------------------------------------
+// Lazy-load repair.
+//
+// Poshmark ships each cover as a <picture> whose <source>s carry `data-srcset`
+// and whose <img> carries `data-src`, and promotes them to the real attributes
+// with an IntersectionObserver when the tile scrolls into view. Re-sorting
+// detaches and re-appends tiles, and that handoff never completes for the ones
+// we moved: measured on a live search, 35 of 48 covers stayed blank, including
+// every card that MATCHED. A filter that surfaces the right listings without
+// their pictures has not helped anyone buy clothes.
+//
+// So we finish the promotion the page had already set up. We do NOT promote on
+// sight: the caller only calls this for a tile that is actually in view, which
+// is the same condition Poshmark's own observer applies. No image is fetched
+// that the shopper's own scroll would not have fetched.
+
+/** Does this tile still hold a cover the page prepared but never loaded? */
+export function hasPendingLazy(tile) {
+  if (!tile) return false;
+  return !!tile.querySelector("img[data-src]:not([src]), source[data-srcset]:not([srcset])");
+}
+
+/**
+ * Promote data-srcset/data-src to srcset/src inside one tile.
+ *
+ * Sources go first: <picture> picks a candidate when the img gets its src, so
+ * setting the img first would load the fallback JPEG and keep it even once the
+ * webp sources appeared. Returns true when something was promoted.
+ */
+export function promoteLazy(tile) {
+  if (!tile) return false;
+  let did = false;
+  for (const s of tile.querySelectorAll("source[data-srcset]:not([srcset])")) {
+    s.setAttribute("srcset", s.getAttribute("data-srcset"));
+    did = true;
+  }
+  for (const img of tile.querySelectorAll("img[data-src]:not([src])")) {
+    img.setAttribute("src", img.getAttribute("data-src"));
+    did = true;
+  }
+  return did;
+}
+
+/**
+ * Keep a floating box inside the viewport, with a margin.
+ *
+ * Pure maths so it can be tested without a window. This lived inline in the
+ * drag handler and NOWHERE else, which is how a HUD position saved on a taller
+ * window came to be restored verbatim: measured live at top:864 in an 839px
+ * viewport, i.e. below the bottom edge, and unrecoverable because the drag
+ * handle is the box itself. Every path that positions the HUD now goes
+ * through this.
+ *
+ * The inner Math.max guards a viewport SMALLER than the box, where
+ * `viewH - elH - margin` goes negative and would otherwise pin it off the top.
+ */
+export function clampToViewport(left, top, elW, elH, viewW, viewH, margin = 6) {
+  return {
+    left: Math.max(margin, Math.min(Math.max(margin, viewW - elW - margin), left)),
+    top: Math.max(margin, Math.min(Math.max(margin, viewH - elH - margin), top)),
+  };
+}

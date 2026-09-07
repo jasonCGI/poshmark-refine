@@ -98,6 +98,33 @@
   const countStates = (grids) => G.countStates(grids, SEL);
   const countTiles = (grids) => G.countTiles(grids, SEL);
   const shouldReapply = (muts) => G.shouldReapply(muts, SEL);
+
+  // Re-sorting re-appends tiles, which strands Poshmark's own lazy-load: the
+  // <picture> keeps its data-srcset/data-src and never gets the real ones, so
+  // the cover stays blank. We finish that promotion, but only for a tile the
+  // shopper can actually see - the same trigger the page uses - so this loads
+  // no image their scroll would not have loaded. A small margin means the
+  // cover is there as the row arrives rather than flashing in after it.
+  //
+  // Safe against the observer loop that froze the tab once: srcset/src are
+  // ATTRIBUTE writes, and observeOpts filters attributes down to href, so
+  // nothing here feeds back into apply().
+  const lazyIo = "IntersectionObserver" in window
+    ? new IntersectionObserver((entries, io) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          G.promoteLazy(e.target);
+          io.unobserve(e.target);
+        }
+      }, { rootMargin: "150px" })
+    : null;
+
+  function watchLazy(root) {
+    if (!lazyIo) return;
+    for (const tile of (root || document).querySelectorAll(SEL.tile)) {
+      if (G.hasPendingLazy(tile)) lazyIo.observe(tile);
+    }
+  }
   const allTiles = () => G.allTiles(document, SEL);
   const topCauses = (grids) => G.topCauses(grids, SEL);
 
@@ -323,6 +350,28 @@
   const HUD_POS_KEY = "pmr-hud-pos";
   const HUD_MIN_KEY = "pmr-hud-min";
 
+  // The last position the shopper actually CHOSE, before clamping. Kept apart
+  // from the applied position so that shrinking the window and growing it back
+  // returns the HUD to where they put it rather than to where it was squeezed.
+  let hudDesired = null;
+
+  // One clamp, used by the drag, the restore and the resize. It used to exist
+  // only inside the drag handler, so a position saved on a taller window was
+  // restored verbatim - which put the HUD below the bottom edge, where it
+  // cannot be dragged back because the drag handle is the HUD itself.
+  function clampHud(hud, left, top) {
+    return G.clampToViewport(left, top, hud.offsetWidth, hud.offsetHeight,
+                             window.innerWidth, window.innerHeight);
+  }
+
+  function placeHud(hud) {
+    if (!hudDesired) return;                       // never moved: leave the CSS corner
+    const { left, top } = clampHud(hud, hudDesired.left, hudDesired.top);
+    hud.style.left = left + "px";
+    hud.style.top = top + "px";
+    hud.style.bottom = "auto";
+  }
+
   function makeDraggable(hud, handle) {
     let ox, oy, sx, sy, dragging = false;
     handle.addEventListener("pointerdown", (e) => {
@@ -334,8 +383,7 @@
     });
     handle.addEventListener("pointermove", (e) => {
       if (!dragging) return;
-      const nl = Math.max(6, Math.min(window.innerWidth - hud.offsetWidth - 6, ox + (e.clientX - sx)));
-      const nt = Math.max(6, Math.min(window.innerHeight - hud.offsetHeight - 6, oy + (e.clientY - sy)));
+      const { left: nl, top: nt } = clampHud(hud, ox + (e.clientX - sx), oy + (e.clientY - sy));
       hud.style.left = nl + "px"; hud.style.top = nt + "px";
     });
     const end = (e) => {
@@ -343,7 +391,8 @@
       dragging = false; hud.classList.remove("pmr-dragging");
       // Always let the pointer go - a stuck capture swallows the page's clicks.
       try { if (e && e.pointerId != null) handle.releasePointerCapture(e.pointerId); } catch (err) {}
-      try { localStorage.setItem(HUD_POS_KEY, JSON.stringify({ left: parseInt(hud.style.left, 10), top: parseInt(hud.style.top, 10) })); } catch (e) {}
+      hudDesired = { left: parseInt(hud.style.left, 10), top: parseInt(hud.style.top, 10) };
+      try { localStorage.setItem(HUD_POS_KEY, JSON.stringify(hudDesired)); } catch (e) {}
     };
     handle.addEventListener("pointerup", end);
     handle.addEventListener("pointercancel", end);
@@ -381,9 +430,14 @@
     makeDraggable(hud, hud.querySelector(".pmr-hud-brand"));
     try {
       const pos = JSON.parse(localStorage.getItem(HUD_POS_KEY) || "null");
-      if (pos && Number.isFinite(pos.left)) { hud.style.left = pos.left + "px"; hud.style.top = pos.top + "px"; hud.style.bottom = "auto"; }
+      if (pos && Number.isFinite(pos.left) && Number.isFinite(pos.top)) {
+        hudDesired = { left: pos.left, top: pos.top };
+        placeHud(hud);
+      }
       if (localStorage.getItem(HUD_MIN_KEY) === "1") { hud.classList.add("pmr-collapsed"); min.textContent = "+"; }
     } catch (e) {}
+    // A window that gets shorter must not strand the HUD outside it.
+    window.addEventListener("resize", () => placeHud(hud));
     return hud;
   }
 
@@ -433,6 +487,9 @@
         resort(grid);
         grid.dataset.pmrCount = String(grid.querySelectorAll(SEL.tile).length);
       }
+      // After the move, not before: a tile that was re-appended is exactly the
+      // one whose lazy-load was interrupted.
+      watchLazy(document);
       updateHud(grids);
     } finally {
       if (mo) mo.observe(document.body, observeOpts);
