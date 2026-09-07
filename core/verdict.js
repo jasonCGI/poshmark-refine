@@ -117,14 +117,36 @@ export function verdict(card, intent) {
   }
 
   if (intent.colours) {
-    if (card.colours.size === 0) {
-      unknown = true;
-      reasons.push("no colour in the title (listing page may say)");
-    } else if (![...card.colours].some((c) => intent.colours.has(c))) {
+    // Two sources, and they do NOT carry equal weight.
+    //
+    // The TITLE is the seller's own words about this specific item, so a colour
+    // there that contradicts the ask is real evidence: hide it.
+    //
+    // The listing's structured colour field is a ~16-option dropdown. It is
+    // coarse by construction - a "Blue" that is really teal, a "Grey" that is
+    // really greige - so a contradiction from that source alone is not enough to
+    // discard an item. It DIMS and says so, which keeps the promise that we
+    // never throw away a listing on weak evidence.
+    const titleHit = card.colours.size
+      ? [...card.colours].some((c) => intent.colours.has(c)) : null;
+    const bodyColours = card.bodyColours instanceof Set ? card.bodyColours : null;
+    const bodyHit = bodyColours && bodyColours.size
+      ? [...bodyColours].some((c) => intent.colours.has(c)) : null;
+
+    if (titleHit === true || bodyHit === true) {
+      // one good source agreeing is enough
+    } else if (titleHit === false) {
       reasons.push(`colour ${[...card.colours].join("/")}, you asked for ${[...intent.colours].join("/")}`);
       return { state: "hide", reasons, notes, cause: "colour" };
+    } else if (bodyHit === false) {
+      unknown = true;
+      reasons.push(`listing says ${[...bodyColours].join("/")}, but that field is coarse - kept for you to judge`);
+    } else {
+      unknown = true;
+      reasons.push("no colour in the title (listing page may say)");
     }
   }
+
 
   // A shopper's own colourway name ("Bay Blue"). Brands name colours far more
   // precisely than a family can, but those names live on the listing rather than

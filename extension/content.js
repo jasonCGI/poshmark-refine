@@ -227,16 +227,17 @@
     const card = parseCard(fields, settings.category, settings.corrections);
     const link = tile.querySelector(SEL.link);
     const path = link ? (link.getAttribute("href") || "").split("?")[0] : "";
-    if (path && colourCache.has(path)) {
-      for (const c of colourCache.get(path)) card.colours.add(c);
-    }
+    // Keep the listing's colours SEPARATE from the title's. Merging them let a
+    // coarse structured field hide an item the title never contradicted.
+    if (path && colourCache.has(path)) card.bodyColours = colourCache.get(path);
     if (path && sizeCache.get(path)) card.describedSize = sizeCache.get(path);
     if (path && bodyCache.has(path)) card.bodyText = bodyCache.get(path);
     const v = verdict(card, currentIntent());
     decorate(tile, v);
     tile.dataset.pmrPath = path;
     if (v.cause) tile.dataset.pmrCause = v.cause; else delete tile.dataset.pmrCause;
-    tile.dataset.pmrColourUnknown = String(card.colours.size === 0 && !!settings.colours.length);
+    tile.dataset.pmrColourUnknown = String(
+      card.colours.size === 0 && !(card.bodyColours && card.bodyColours.size) && !!settings.colours.length);
     tile.dataset.pmrSizeUnknown = String(card.size.confidence === "unknown" && !!currentIntent().sizes);
     tile.dataset.pmrTermUnknown = String(!!(settings.colourTerms || []).length && !card.bodyText);
   }

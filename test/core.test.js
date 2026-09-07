@@ -493,3 +493,37 @@ test("parseCard threads corrections through without changing its reasoning", () 
   assert.equal(card.brand.confidence, "title", "still 'found in the title', not a guess");
   assert.ok(card.colours.has("blue"));
 });
+
+// -------------------------------------------- colour source precedence ------
+test("a contradicting TITLE colour hides; a contradicting listing FIELD only dims", () => {
+  const wantPurple = intentFor({ me: { tops: [] } }, "me", "tops", { colours: ["purple"] });
+
+  // the seller's own words say red -> real evidence, discard it
+  const byTitle = verdict(parseCard({ title: "Rails Red Ruffle Top" }), wantPurple);
+  assert.equal(byTitle.state, "hide");
+  assert.equal(byTitle.cause, "colour");
+
+  // the title says nothing; only Poshmark's ~16-option field says blue. That is
+  // coarse by construction, so it must not throw the listing away.
+  const byField = parseCard({ title: "Vuori Ribbed Tank" });
+  byField.bodyColours = new Set(["blue"]);
+  const v = verdict(byField, wantPurple);
+  assert.equal(v.state, "dim", "a coarse field must never hide an item");
+  assert.match(v.reasons.join(" "), /coarse/);
+  assert.match(v.reasons.join(" "), /kept for you to judge/);
+});
+
+test("either source agreeing is enough to show", () => {
+  const wantPurple = intentFor({ me: { tops: [] } }, "me", "tops", { colours: ["purple"] });
+  assert.equal(verdict(parseCard({ title: "Lavender Cami" }), wantPurple).state, "show");
+  const fieldOnly = parseCard({ title: "Vuori Ribbed Tank" });
+  fieldOnly.bodyColours = new Set(["purple"]);
+  assert.equal(verdict(fieldOnly, wantPurple).state, "show", "listing field can confirm");
+});
+
+test("no colour anywhere is still unknown, not a mismatch", () => {
+  const i = intentFor({ me: { tops: [] } }, "me", "tops", { colours: ["purple"] });
+  const v = verdict(parseCard({ title: "Vuori Ribbed Tank" }), i);
+  assert.equal(v.state, "dim");
+  assert.match(v.reasons.join(" "), /no colour in the title/);
+});
