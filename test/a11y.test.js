@@ -108,3 +108,13 @@ test("injected controls have a visible focus ring", () => {
   assert.match(CSS, /\.pmr-badge:focus-visible/, "a focus you cannot see is not keyboard support");
   assert.match(CSS, /#pmr-correct button:focus-visible/);
 });
+
+test("the update bar offers an action, not just a way to hide it", () => {
+  const html = readFileSync(new URL("../extension/popup.html", import.meta.url), "utf8");
+  const js = readFileSync(new URL("../extension/popup.js", import.meta.url), "utf8");
+  assert.match(html, /id="upreload"/, "a notice you can only dismiss is a notice that wastes a click");
+  assert.match(js, /chrome\.runtime\.reload\(\)/, "the reload button must actually reload");
+  // "x" is not a name
+  assert.match(html, /id="updismiss"[^>]*aria-label=/, "the dismiss control needs an accessible name");
+  assert.match(html, /id="upbar" role="status"/, "the bar appears after load, so it has to announce itself");
+});

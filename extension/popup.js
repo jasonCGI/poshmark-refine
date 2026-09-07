@@ -475,6 +475,15 @@ $("updates").addEventListener("change", async () => {
   if (enabled) runUpdateCheck(); else $("upbar").hidden = true;
 });
 
+// The only button here that changes anything. Chrome cannot fetch the update,
+// but for an unpacked extension it CAN re-read the folder, which is the second
+// of the two steps and the one that otherwise means a trip to
+// chrome://extensions. The popup dies with the reload, which is expected.
+$("upreload").addEventListener("click", () => {
+  $("upsteps").textContent = "Reloading. If the notice returns, pull the repo first.";
+  chrome.runtime.reload();
+});
+
 $("updismiss").addEventListener("click", async () => {
   $("upbar").hidden = true;
   const st = (await chrome.storage.local.get("updateCheck")).updateCheck || {};

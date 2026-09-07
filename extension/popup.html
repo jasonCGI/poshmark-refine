@@ -65,6 +65,12 @@
   .upbar .upmsg { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .upbar .upsteps { font-size: 11.5px; opacity: .85; }
   .upbar button { margin-left: auto; }
+  /* The reload button is the one thing in this bar that DOES something, so it
+     looks like a control and the dismiss stays a quiet affordance beside it. */
+  .upbar .upbtn { margin-left: auto; font: inherit; font-weight: 600; cursor: pointer; flex: none;
+                  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--accent);
+                  background: var(--accent); color: #fff; }
+  .upbar .upbtn + button { margin-left: 0; }
   .upbar button { font: inherit; cursor: pointer; background: none; border: 0; color: inherit; font-size: 15px; line-height: 1; padding: 0 2px; }
   /* Self-check findings. Red, because every one of these is the extension
      failing at its job on the page you are looking at right now. */
@@ -83,12 +89,13 @@
     <h1>Poshmark Refine</h1>
     <span class="who" id="whoLabel"></span>
   </header>
-  <div class="upbar" id="upbar" hidden>
+  <div class="upbar" id="upbar" role="status" hidden>
     <span class="upmsg">
       <b id="uptext"></b>
-      <span class="upsteps">Pull the repo, then Reload it on the extensions page.</span>
+      <span class="upsteps" id="upsteps">Pull the repo, then reload the extension.</span>
     </span>
-    <button id="updismiss" type="button" title="Dismiss">&times;</button>
+    <button id="upreload" class="upbtn" type="button">Reload</button>
+    <button id="updismiss" type="button" title="Dismiss this version" aria-label="Dismiss this version">&times;</button>
   </div>
   <div class="pstatus" id="pagestatus"><span class="led"></span><span id="pstext">Checking this page&hellip;</span></div>
   <div class="selfcheck" id="selfcheck" hidden></div>
