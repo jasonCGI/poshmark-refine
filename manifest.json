@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Poshmark Refine",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Makes Poshmark search respect the size, brand and colour you asked for. Works only on the page you loaded; sends nothing anywhere.",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
-    "https://poshmark.com/*"
+    "https://poshmark.com/*",
+    "https://vuoriclothing.com/*"
   ],
   "background": {
     "service_worker": "extension/sw.js"
@@ -26,6 +27,19 @@
         "extension/content.css"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://vuoriclothing.com/products/*",
+        "https://www.vuoriclothing.com/products/*"
+      ],
+      "js": [
+        "extension/brand.js"
+      ],
+      "css": [
+        "extension/brand.css"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
@@ -37,6 +51,16 @@
       ],
       "matches": [
         "https://poshmark.com/*"
+      ]
+    },
+    {
+      "resources": [
+        "core/brand.js",
+        "core/search.js"
+      ],
+      "matches": [
+        "https://vuoriclothing.com/*",
+        "https://www.vuoriclothing.com/*"
       ]
     }
   ],
