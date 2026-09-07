@@ -319,10 +319,19 @@ const COLOUR_INDEX = Object.entries(COLOUR_FAMILIES)
 export function coloursFromTitle(title) {
   let t = " " + String(title || "").toLowerCase().replace(/[^\p{L}\p{N}\-]+/gu, " ") + " ";
   const found = new Set();
+  // A word can legitimately belong to SEVERAL families - the table puts "cream"
+  // in both white and beige, "coral" in pink and orange. Consuming the word on
+  // the first family that claimed it silently dropped the others, so a beige
+  // filter hid a cream top. Collect every family for a word, THEN consume it.
+  const byWord = new Map();
   for (const [word, family] of COLOUR_INDEX) {
+    if (!byWord.has(word)) byWord.set(word, []);
+    byWord.get(word).push(family);
+  }
+  for (const [word, families] of byWord) {
     const needle = " " + word + " ";
     if (t.includes(needle)) {
-      found.add(family);
+      for (const f of families) found.add(f);
       t = t.split(needle).join(" ");
     }
   }

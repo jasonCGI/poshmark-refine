@@ -34,6 +34,26 @@ export function findGrids(root, SEL) {
   return all.filter((g) => !all.some((o) => o !== g && g.contains(o)));
 }
 
+/**
+ * Every tile on the page, whatever grid it does or does not belong to.
+ *
+ * This is deliberately NOT derived from findGrids(). A lone card whose nearest
+ * multi-tile ancestor is dropped by the innermost-container filter belongs to no
+ * returned grid, and judging only grid members left it permanently unseen - which
+ * made the document-wide convergence check schedule a pass every frame, forever.
+ * Judge from here; sort from findGrids().
+ */
+export function allTiles(root, SEL) {
+  return [...root.querySelectorAll(SEL.tile)];
+}
+
+/** Tiles present on the page but inside no detected grid. Should be judged too. */
+export function orphanTiles(root, SEL) {
+  const covered = new Set();
+  for (const g of findGrids(root, SEL)) for (const t of g.querySelectorAll(SEL.tile)) covered.add(t);
+  return allTiles(root, SEL).filter((t) => !covered.has(t));
+}
+
 /** The reorderable unit: the direct child of `grid` that contains `tile`. */
 export function wrapperOf(tile, grid) {
   let w = tile;
@@ -72,6 +92,11 @@ export function signatureOf(tile, SEL) {
   return [
     text(tile, SEL.title),
     text(tile, SEL.size),
+    // price and condition are filterable, so a change to either can flip a
+    // verdict. Leaving them out let a re-priced card, or one that lost its NWT
+    // badge, keep a verdict that is no longer true.
+    SEL.price ? text(tile, SEL.price) : "",
+    SEL.condition ? text(tile, SEL.condition) : "",
     link ? (link.getAttribute("href") || "").split("?")[0] : "",
   ].join("|");
 }

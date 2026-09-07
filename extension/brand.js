@@ -85,12 +85,23 @@
     (h1.parentElement || h1).insertBefore(btn, h1.nextSibling);
   }
 
+  let lastKey = "";
   function sync() {
-    if (location.href === lastHref) return;
-    lastHref = location.href;
     const product = extractProduct(document, location.hostname);
-    if (product) render(product);
-    else document.getElementById(BTN_ID)?.remove();
+    if (!product) {
+      // Nothing resolved YET. These pages hydrate after load, so do not record
+      // this URL as handled - marking it done here meant a late-arriving product
+      // was never picked up. Clear any button from a previous product first.
+      if (lastHref !== location.href) { document.getElementById(BTN_ID)?.remove(); lastHref = location.href; lastKey = ""; }
+      return;
+    }
+    // Re-render when the URL OR the resolved product changes: an SPA can swap
+    // the product under the same href, which would otherwise keep stale data.
+    const key = location.href + "|" + product.name + "|" + (product.colour || "");
+    if (key === lastKey) return;
+    lastHref = location.href;
+    lastKey = key;
+    render(product);
   }
 
   // These sites are SPAs: the product changes without a reload. Poll the href

@@ -91,6 +91,7 @@
   const countStates = (grids) => G.countStates(grids, SEL);
   const countTiles = (grids) => G.countTiles(grids, SEL);
   const shouldReapply = (muts) => G.shouldReapply(muts, SEL);
+  const allTiles = () => G.allTiles(document, SEL);
   const topCauses = (grids) => G.topCauses(grids, SEL);
 
 
@@ -327,8 +328,13 @@
     applying = true;
     if (mo) mo.disconnect();          // our writes below must not feed back
     try {
+      // Judge EVERY tile in the document, not only those inside a detected
+      // grid. A lone card whose nearest multi-tile ancestor gets dropped by the
+      // innermost-container filter would otherwise never be judged, never get
+      // data-pmr-seen, and the convergence check below would then schedule a
+      // pass every single frame forever. Grids are for SORTING only.
+      for (const tile of allTiles()) judge(tile);
       for (const grid of grids) {
-        for (const tile of grid.querySelectorAll(SEL.tile)) judge(tile);
         resort(grid);
         grid.dataset.pmrCount = String(grid.querySelectorAll(SEL.tile).length);
       }

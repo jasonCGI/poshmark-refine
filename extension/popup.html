@@ -39,6 +39,8 @@
   .priv { font-size: 11.5px; color: var(--muted); padding: 0 14px 12px; }
   .priv b { color: var(--match); }
   .hint { font-size: 11.5px; color: var(--muted); margin: 7px 0 0; }
+  .switchline { display: flex; gap: 7px; align-items: flex-start; cursor: pointer; }
+  .switchline input { margin: 2px 0 0; flex: none; }
   .sub { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); }
   .chip[disabled] { opacity: .45; cursor: not-allowed; }
   .searchrow { display: flex; gap: 6px; }
@@ -54,6 +56,10 @@
   .pstatus.on { border-color: color-mix(in srgb, var(--match) 45%, var(--line)); }
   .pstatus .led { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
   .pstatus.on .led { background: var(--match); }
+  .upbar { display: flex; align-items: center; gap: 8px; margin: 10px 14px 0; padding: 8px 10px; border-radius: 8px; font-size: 12.5px;
+           background: color-mix(in srgb, var(--accent) 12%, var(--card)); border: 1px solid var(--accent); color: var(--accent-ink); }
+  .upbar a { color: inherit; font-weight: 700; margin-left: auto; }
+  .upbar button { font: inherit; cursor: pointer; background: none; border: 0; color: inherit; font-size: 15px; line-height: 1; padding: 0 2px; }
   .pstatus .mini { font: inherit; font-weight: 600; cursor: pointer; margin-left: auto; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; }
 </style>
 </head>
@@ -63,6 +69,11 @@
     <h1>Poshmark Refine</h1>
     <span class="who" id="whoLabel"></span>
   </header>
+  <div class="upbar" id="upbar" hidden>
+    <span id="uptext"></span>
+    <a id="uplink" href="#" target="_blank" rel="noreferrer">How</a>
+    <button id="updismiss" type="button" title="Dismiss">&times;</button>
+  </div>
   <div class="pstatus" id="pagestatus"><span class="led"></span><span id="pstext">Checking this page&hellip;</span></div>
   <div class="body">
     <h2>Search Poshmark</h2>
@@ -108,7 +119,11 @@
     <button id="more" class="link" type="button">Manage family &amp; behaviour</button>
     <span id="status" class="saved" hidden>&#10003; Saved</span>
   </div>
-  <p class="priv"><b>&#10003;</b> Filters run on the search page you open. Nothing leaves your browser.</p>
+  <p class="priv"><b>&#10003;</b> Filters run on the search page you open. Nothing about you leaves your browser.</p>
+  <p class="priv" style="padding-top:0">
+    <label class="switchline"><input id="updates" type="checkbox">
+    <span>Check GitHub for updates (once a day). Off by default: this is the only request that is not to Poshmark.</span></label>
+  </p>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

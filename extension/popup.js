@@ -20,6 +20,7 @@ const DEFAULTS = {
 // Single source of truth for sizes, colours and brands lives in core/ - import
 // it so the popup can never drift from what the verdict engine actually knows.
 import { CATEGORY_SIZES, CATEGORIES, COLOUR_FAMILIES, BRAND_ALIASES } from "../core/normalize.js";
+import { isNewer, shouldCheck, fetchLatestVersion, REPO_URL } from "../core/update.js";
 // The search URL is built in core/search.js, shared with the brand-site bridge,
 // so the two can never disagree about what a search means.
 import { poshmarkSearchUrl, DEPARTMENTS } from "../core/search.js";
@@ -157,7 +158,13 @@ function renderColourways() {
   for (const term of state.colourTerms) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "chip"; b.setAttribute("aria-pressed", "true");
-    b.innerHTML = term + ' <span class="tick">&times;</span>';
+    // `term` can originate from a brand page's JSON-LD, so it is untrusted
+    // input. Never let it reach innerHTML - build the node and set text.
+    b.appendChild(document.createTextNode(term));
+    const x = document.createElement("span");
+    x.className = "tick";
+    x.textContent = "×";
+    b.appendChild(x);
     b.title = "Remove";
     b.addEventListener("click", () => {
       state.colourTerms = state.colourTerms.filter((t) => t !== term);
@@ -360,6 +367,44 @@ $("department").addEventListener("change", () => { state.department = $("departm
 
 $("more").addEventListener("click", () => { chrome.runtime.openOptionsPage(); window.close(); });
 
+// ---- update check ----------------------------------------------------------
+// Chrome cannot auto-update an unpacked extension, so this only NOTICES a newer
+// version and tells the shopper the two steps. It is the one request that is not
+// to Poshmark, so it is opt-in and default OFF, and it sends no user data.
+async function runUpdateCheck() {
+  const cur = chrome.runtime.getManifest().version;
+  let st = {};
+  try { st = (await chrome.storage.local.get("updateCheck")).updateCheck || {}; } catch (e) {}
+  $("updates").checked = !!st.enabled;
+
+  const show = (latest) => {
+    if (!latest || !isNewer(latest, cur)) return;
+    $("uptext").textContent = "v" + latest + " available (you have " + cur + ")";
+    $("uplink").href = REPO_URL;
+    $("upbar").hidden = st.dismissed === latest;
+  };
+  show(st.latest);
+  if (!shouldCheck(st)) return;
+  const latest = await fetchLatestVersion();
+  if (!latest) return;
+  st = Object.assign({}, st, { latest, lastCheck: Date.now() });
+  try { await chrome.storage.local.set({ updateCheck: st }); } catch (e) {}
+  show(latest);
+}
+
+$("updates").addEventListener("change", async () => {
+  const enabled = $("updates").checked;
+  const st = (await chrome.storage.local.get("updateCheck")).updateCheck || {};
+  await chrome.storage.local.set({ updateCheck: Object.assign({}, st, { enabled, lastCheck: 0 }) });
+  if (enabled) runUpdateCheck(); else $("upbar").hidden = true;
+});
+
+$("updismiss").addEventListener("click", async () => {
+  $("upbar").hidden = true;
+  const st = (await chrome.storage.local.get("updateCheck")).updateCheck || {};
+  await chrome.storage.local.set({ updateCheck: Object.assign({}, st, { dismissed: st.latest }) });
+});
+
 (async () => {
   renderBrandsList();
   renderLearnedList();
@@ -372,4 +417,5 @@ $("more").addEventListener("click", () => { chrome.runtime.openOptionsPage(); wi
   renderAll();
   renderLearnedList();
   refreshStatus();
+  runUpdateCheck();
 })();

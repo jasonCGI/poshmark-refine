@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import {
   text, findGrids, wrapperOf, plan, resort, signatureOf, isOurs,
-  shouldReapply, countStates, countTiles,
+  shouldReapply, countStates, countTiles, allTiles, orphanTiles,
 } from "../core/grid.js";
 import {
   extractProduct, brandForHost, guessCategory, stripVariantSuffix, searchQueryFor,
@@ -24,6 +24,7 @@ const SEL = {
   size: ".tile-grid-redesign__size",
   condition: ".tile-grid-redesign__condition-wrap",
   media: ".tile-grid-redesign__media--wrapper",
+  price: ".tile-grid-redesign__price-current",
   link: "a.tile-grid-redesign__meta-link, a.tile__covershot",
 };
 
@@ -83,6 +84,35 @@ test("wrapperOf returns the column, never the tile - detaching the tile breaks t
   assert.equal(w.parentElement, grid);
   assert.ok(w.classList.contains("col-x12"));
   assert.notEqual(w, tile);
+});
+
+// --------------------------------------- orphan tiles / the every-frame loop --
+test("a lone card outside every detected grid is still a tile we must judge", () => {
+  // A multi-card grid AND a single card sharing an outer ancestor. The lone
+  // card's nearest multi-tile ancestor is #outer, which the innermost-container
+  // filter correctly drops - so the card belongs to NO returned grid.
+  const doc = load(
+    '<div id="outer">' +
+      '<div class="tiles_container">' +
+        '<div class="col-x12"><div class="tile-grid-redesign"><span class="tile-grid-redesign__title">A</span></div></div>' +
+        '<div class="col-x12"><div class="tile-grid-redesign"><span class="tile-grid-redesign__title">B</span></div></div>' +
+      '</div>' +
+      '<div class="solo"><div class="tile-grid-redesign"><span class="tile-grid-redesign__title">lone</span></div></div>' +
+    '</div>');
+  const grids = findGrids(doc, SEL);
+  assert.equal(countTiles(grids, SEL), 2, "the lone card is not inside a detected grid");
+  assert.equal(allTiles(doc, SEL).length, 3, "but it IS a tile on the page");
+
+  const orphans = orphanTiles(doc, SEL);
+  assert.equal(orphans.length, 1);
+  assert.equal(text(orphans[0], SEL.title), "lone");
+
+  // Judging from allTiles() marks every tile, so the document-wide convergence
+  // check settles. Judging only grid members left this one permanently unseen,
+  // which scheduled a pass every animation frame forever.
+  for (const t of allTiles(doc, SEL)) t.dataset.pmrSeen = "1";
+  assert.equal(doc.querySelectorAll(SEL.tile + ":not([data-pmr-seen])").length, 0,
+    "convergence check must reach zero, or apply() loops every frame");
 });
 
 // ------------------------------------------------------------- resort -------
@@ -166,6 +196,23 @@ test("a card REUSED in place is detected by signature and re-opened for judging"
   tile.querySelector(SEL.title).textContent = " Vuori Performance Tee ";
   assert.equal(shouldReapply([{ target: tile.querySelector(SEL.title), addedNodes: [] }], SEL), true);
   assert.equal(tile.dataset.pmrSeen, undefined, "marker cleared so the next pass re-judges it");
+});
+
+test("signature covers price and condition - a re-priced card must be re-judged", () => {
+  const doc = load();
+  const tile = doc.querySelector(SEL.tile);
+  const price = tile.querySelector(SEL.price);
+  const cond = tile.querySelector(SEL.condition);
+
+  const before = signatureOf(tile, SEL);
+  price.textContent = "$120";                       // the seller re-prices it
+  assert.notEqual(signatureOf(tile, SEL), before, "a re-price must change the signature");
+
+  // losing an NWT badge can flip a condition verdict, so it must count too
+  cond.textContent = "NWT";
+  const withNwt = signatureOf(tile, SEL);
+  cond.textContent = "";
+  assert.notEqual(signatureOf(tile, SEL), withNwt, "losing NWT must change the signature");
 });
 
 test("signature covers the link too - same title, different listing", () => {

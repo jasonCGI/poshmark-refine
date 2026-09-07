@@ -9,6 +9,7 @@ import {
   matchesColourTerm, colourwayCandidates,
 } from "../core/normalize.js";
 import { parseCard, intentFor, verdict } from "../core/verdict.js";
+import { compareVersions, isNewer, shouldCheck, fetchLatestVersion } from "../core/update.js";
 
 const fx = JSON.parse(readFileSync(new URL("../fixtures/tops-blouse-2026-09-05.json", import.meta.url), "utf8"));
 const cards = fx.rows.map(([title, size, condition]) => parseCard({ title, size, condition }));
@@ -119,6 +120,19 @@ test("ambiguous first-name-ish colours only match in their phrase form", () => {
   assert.equal(coloursFromTitle("Ruby Wildflower Blouse").size, 0);
   // 'fawn' was removed entirely - it collided with the brand 'Gentle Fawn'.
   assert.equal(coloursFromTitle("Gentle Fawn Idyll Blouse Top").size, 0);
+});
+
+test("a word in TWO families yields both - consuming it early hid valid items", () => {
+  // The table deliberately puts these words in two families. Matching used to
+  // consume the word on the first family that claimed it, so a beige filter
+  // hid a cream top and an orange filter hid a coral one.
+  const cream = coloursFromTitle("Cream Silk Blouse");
+  assert.ok(cream.has("white"), "cream is a white");
+  assert.ok(cream.has("beige"), "cream is ALSO a beige");
+  const coral = coloursFromTitle("Coral Ruffle Top");
+  assert.ok(coral.has("pink") && coral.has("orange"), "coral is pink and orange");
+  const khaki = coloursFromTitle("Khaki Utility Shirt");
+  assert.ok(khaki.has("beige") && khaki.has("green"), "khaki is beige and green");
 });
 
 test("a title with no colour word is an EMPTY set - unknown, not colourless", () => {
@@ -356,4 +370,30 @@ test("the whole fixture under one shopper: nothing is silently dropped", () => {
   for (const [c, s] of cards.map((c, k) => [c, states[k]])) {
     if (s === "hide") assert.ok(verdict(c, i).reasons.length, "every hide has a reason");
   }
+});
+
+// ------------------------------------------------------ update check ---------
+test("version comparison is numeric, not lexical", () => {
+  assert.equal(compareVersions("0.10.0", "0.9.0"), 1, "0.10 is NEWER than 0.9");
+  assert.equal(compareVersions("0.9.0", "0.10.0"), -1);
+  assert.equal(compareVersions("0.9", "0.9.0"), 0, "missing parts count as zero");
+  assert.ok(isNewer("1.0.0", "0.10.1"));
+  assert.ok(!isNewer("0.10.1", "0.10.1"));
+});
+
+test("the network is touched only when opted in, and at most once a day", () => {
+  const now = Date.parse("2026-09-07T12:00:00Z");
+  assert.equal(shouldCheck({ enabled: false }, now), false, "off by default means no request");
+  assert.equal(shouldCheck({ enabled: true, lastCheck: 0 }, now), true, "never checked -> check");
+  assert.equal(shouldCheck({ enabled: true, lastCheck: now - 1000 }, now), false, "checked a moment ago");
+  assert.equal(shouldCheck({ enabled: true, lastCheck: now - 25 * 3600 * 1000 }, now), true);
+});
+
+test("a failed or malformed update check is silent, never an error at the shopper", async () => {
+  assert.equal(await fetchLatestVersion(async () => { throw new Error("offline"); }), null);
+  assert.equal(await fetchLatestVersion(async () => ({ ok: false })), null);
+  assert.equal(await fetchLatestVersion(async () => ({ ok: true, text: async () => "not json" })), null);
+  assert.equal(
+    await fetchLatestVersion(async () => ({ ok: true, text: async () => '{"version": "0.11.0"}' })),
+    "0.11.0");
 });
