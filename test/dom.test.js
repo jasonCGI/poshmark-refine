@@ -16,7 +16,7 @@ import {
 } from "../core/grid.js";
 import {
   extractProduct, brandForHost, guessCategory, stripVariantSuffix, searchQueryFor,
-  hostKey, sitesWith, brandFromJsonLd,
+  hostKey, sitesWith, brandFromJsonLd, BRAND_SITES,
 } from "../core/brand.js";
 import { poshmarkSearchUrl } from "../core/search.js";
 
@@ -550,4 +550,13 @@ test("an added site works end to end, and a nameless one is refused", () => {
   const builtin = extractProduct(
     page({ "@type": "Product", name: "Cami", brand: { name: "VUORI CLOTHING INC" } }), "vuoriclothing.com");
   assert.equal(builtin.brand, "Vuori");
+});
+
+test("a built-in site cannot also be added by hand", () => {
+  // The manifest already ships a content script for it; registering a dynamic
+  // one for the same pages injects the Find-on-Poshmark button twice.
+  const optionsJs = readFileSync(new URL("../extension/options.js", import.meta.url), "utf8");
+  assert.match(optionsJs, /BRAND_SITES\[host\]/, "adding a built-in host must be refused");
+  // and the built-in list is what that guard is checking against
+  assert.ok(Object.keys(BRAND_SITES).length > 0);
 });

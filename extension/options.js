@@ -4,7 +4,7 @@
 // reads. A person holds sizes for SEVERAL categories at once, because a top, a
 // pair of jeans and a shoe are measured in different systems.
 import { CATEGORY_SIZES, CATEGORIES, COLOUR_FAMILIES, BRAND_ALIASES } from "../core/normalize.js";
-import { hostKey } from "../core/brand.js";
+import { hostKey, BRAND_SITES } from "../core/brand.js";
 import { recordFit, learnedSize, forgetFit, explainFit, MIN_EVIDENCE } from "../core/fit.js";
 
 const DEFAULTS = {
@@ -338,6 +338,9 @@ async function addSite() {
   const host = hostKey($("bsUrl").value);
   if (!host || !host.includes(".")) { bsMsg("That does not look like a website address.", true); return; }
   if (host === "poshmark.com") { bsMsg("Poshmark is the other side of the bridge, not a brand site.", true); return; }
+  // A built-in site already has a content script in the manifest. Adding it
+  // would register a SECOND one for the same pages and inject the button twice.
+  if (BRAND_SITES[host]) { bsMsg((BRAND_SITES[host].brand || host) + " is already built in.", true); return; }
 
   // The permission request must be the FIRST thing the click does, or Chrome
   // rejects it as not being in response to a user gesture.
