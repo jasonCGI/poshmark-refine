@@ -34,6 +34,10 @@
 body.pmr-reveal .tile-grid-redesign.pmr-hide { display: block; opacity: .34; filter: grayscale(1); }
 
 /* ---- per-tile badge (sits on the image) --------------------------------- */
+/* Poshmark does not position the media wrapper, so we establish the containing
+   block for the badge. Without this the badge escapes to a distant positioned
+   ancestor and lands on unrelated page furniture. relative keeps it in flow. */
+.pmr-anchor { position: relative; }
 .pmr-badge {
   position: absolute; top: 8px; left: 8px; z-index: 5;
   display: inline-flex; align-items: center; gap: 4px;

@@ -17,6 +17,7 @@
     title: ".tile-grid-redesign__title",
     size: ".tile-grid-redesign__size",
     condition: ".tile-grid-redesign__condition-wrap",
+    media: ".tile-grid-redesign__media--wrapper",
     link: "a.tile-grid-redesign__meta-link, a.tile__covershot",
   };
 
@@ -76,10 +77,15 @@
     tile.classList.remove("pmr-show", "pmr-dim", "pmr-hide", "pmr-fade");
     tile.classList.add("pmr-" + v.state);
     if (v.state === "hide" && settings.hideMode === "fade") tile.classList.add("pmr-fade");
-    // A badge on the cover image. The media wrapper is already positioned (it
-    // hosts the like button), so the badge anchors to it without disturbing
-    // Poshmark's layout. State is the badge word + colour, not opacity alone.
-    const media = tile.querySelector(".tile-grid-redesign__media--wrapper") || tile;
+    // A badge on the cover image. State is carried by the badge word + colour,
+    // not by opacity alone, so it survives for anyone not seeing the fade.
+    const media = tile.querySelector(SEL.media) || tile;
+    // The wrapper is NOT positioned by Poshmark, so an absolutely positioned
+    // badge would escape to whatever distant ancestor happens to be positioned
+    // and render over unrelated page furniture. Establish the containing block
+    // ourselves. position:relative keeps the element in flow, so their layout
+    // is unchanged.
+    media.classList.add("pmr-anchor");
     let badge = media.querySelector(":scope > .pmr-badge");
     if (!badge) {
       badge = document.createElement("span");
