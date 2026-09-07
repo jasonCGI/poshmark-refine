@@ -1,8 +1,14 @@
-# Poshmark search refiner - spec for reaction
+# Poshmark search refiner - spec
 
-2026-09-05. Jason's framing: *"Their current search is not very good. It ignores
-things like size and brand and colors."* This is a draft to react to, not a
-plan that has been agreed.
+Written 2026-09-05 as a draft to react to; agreed the same day and built out
+since. Last reconciled with the code **2026-09-07 at v0.15.0**.
+
+Jason's framing: *"Their current search is not very good. It ignores things
+like size and brand and colors."*
+
+The problem statement, the Terms-of-Service constraint and the tier model below
+are unchanged from the original draft and still describe the product. What has
+been built against them is recorded in *Built* near the end.
 
 ## The problem, stated precisely
 
@@ -134,10 +140,11 @@ filter logic is tested without a browser.
    identifies" thesis is the story. That means tests, captured fixtures, and
    a written contract from day one rather than a fast household hack.
 
-## Phase 1 build slice (proposed)
+## Phase 1 build slice (built)
 
-Repo `jasonCGI/poshmark-refine`, Manifest V3, no build step beyond a tiny
-bundler, no telemetry of any kind.
+Repo `jasonCGI/poshmark-refine` (public), Manifest V3, **no build step and no
+bundler at all**, no telemetry of any kind. All six items below shipped; item 6
+is drafted but not yet published.
 
 1. **Fixtures first.** Save ~40 real result cards (HTML) from `tops` searches
    as test fixtures, covering the spelling variance: `M`, `Medium`, `8`,
@@ -167,25 +174,56 @@ member, every visible card matches their size and brand, every hidden card
 shows why, unknowns are dimmed and grouped at the end, and the core has >90%
 of its verdict logic covered by fixture tests.
 
-## Open questions (remaining)
+The function names in item 2 are the draft's sketch, not the shipped API; the
+modules landed with different names and a wider surface. Read `core/` for the
+real one.
 
-1. Repo visibility from day one (public) or private until the whitepaper is
-   ready?
-2. Chrome only, or Chrome + Edge + Firefox (MV3 differences are small for
-   this shape, but Firefox needs a separate store listing)?
+## Built
 
-## Resolved questions (for the record)
+Phase 1 landed at v0.7.0. Everything after it followed the same rule and is
+listed here so the spec does not read as though the tool stopped there.
 
+| version | what it added |
+|---|---|
+| 0.8.0 | jsdom DOM tests; `core/grid.js` extracted so tests exercise shipped code; captured grid fragment as a selector-drift canary |
+| 0.9.0 | exact brand colourways, learned from listings as you browse |
+| 0.10.0 | brand-page bridge: read a product off the brand's own site (JSON-LD) and find it on Poshmark |
+| 0.11.0 | saved searches |
+| 0.12.0 | correct a card's badge, and the alias tables actually learn the word |
+| 0.13.0 | colour precedence: the title and the listing's coarse colour field are not equal evidence |
+| 0.14.0 | optional on-device AI tier, behind everything deterministic, fills-only |
+| 0.15.0 | every category sends a facet read off Poshmark's own category links |
 
-1. **Tier 3** - build the per-card listing read for colour, or hold at title
-   words only?
-2. **Whose sizes?** Start with one shopper's size profile (Jason's household)
-   or design the profile for multiple people from the start?
-3. **Categories first.** Jeans (W/L, the messiest sizes), women's tops, or
-   shoes? Pick one to build the alias tables against real listings.
-4. **Portfolio or personal?** If this goes on cardonalab.dev the "narrows vs
-   identifies" story writes itself; if it is a household tool, ship faster and
-   skip the polish.
+Also built and not in the original slice: per-category size profiles (a person
+is not one size), a search box in the popup, and an opt-in daily update check.
+
+**Tier 4 (fit memory) is not built.** Nothing records whether a purchased item
+actually fitted, so no brand-level size learning exists.
+
+## Open questions
+
+1. **Chrome only, or Chrome + Edge + Firefox?** MV3 differences are small for
+   this shape, but Firefox needs a separate store listing.
+2. **Distribution.** Loaded unpacked today, which cannot auto-update - the
+   extension can only *tell* you an update exists. Closing that loop means a
+   Chrome Web Store listing, with the store review and the permission
+   justifications that come with it.
+3. **Multi-size sweep.** Running one search per size and merging the results
+   would be genuinely useful and is the first feature that would make the tool
+   *generate* traffic rather than annotate a page the shopper opened. Held
+   deliberately: it crosses the line every other feature has stayed behind.
+
+## Resolved
+
+- **Tier 3** - in, with guardrails (hover only, one at a time, no prefetch,
+  tab-session cache). Off by default.
+- **Whose sizes** - multiple people from the start, each with a profile per
+  category. "Anyone in the family" unions the sizes and does not lock them.
+- **First category** - tops, then the rest; shoes are their own scale and are
+  never inferred from a letter size.
+- **Portfolio or personal** - portfolio. Public repo, whitepaper drafted for
+  cardonalab.dev, and the "narrows vs identifies" thesis is the story.
+- **Repo visibility** - public from day one.
 
 ## Sources
 
