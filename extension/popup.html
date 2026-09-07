@@ -44,6 +44,10 @@
   .searchrow { display: flex; gap: 6px; }
   .searchrow input { flex: 1; }
   .searchrow .btn { flex: none; }
+  .pblock { border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; margin: 0 0 8px; background: var(--card); }
+  .pblock + .pblock { margin-top: 8px; }
+  .plabel { font-size: 11.5px; font-weight: 700; color: var(--muted); margin-bottom: 7px; }
+  .pblock input { margin-top: 7px; }
   /* live status of the page under the popup */
   .pstatus { display: flex; align-items: center; gap: 8px; margin: 10px 14px 0; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; background: var(--card); border: 1px solid var(--line); color: var(--muted); }
   .pstatus b { color: var(--ink); }
@@ -75,9 +79,7 @@
     <select id="category"></select>
 
     <h2>Sizes <span id="sizeFor" class="sub"></span></h2>
-    <div id="sizes" class="chips" role="group" aria-label="Sizes"></div>
-    <input id="sizesText" type="text" placeholder="or type: US 8, 1X" style="margin-top:8px">
-    <p id="sizeHint" class="hint" hidden>Pick a person above to edit their sizes.</p>
+    <div id="sizes"></div>
 
     <h2>Colours</h2>
     <div id="colours" class="chips" role="group" aria-label="Colours"></div>
@@ -92,6 +94,6 @@
     <span id="status" class="saved" hidden>&#10003; Saved</span>
   </div>
   <p class="priv"><b>&#10003;</b> Filters run on the search page you open. Nothing leaves your browser.</p>
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

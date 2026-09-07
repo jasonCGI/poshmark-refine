@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { normalizeSize, sizeMatches, normalizeBrand, coloursFromTitle } from "../core/normalize.js";
+import { normalizeSize, sizeMatches, normalizeBrand, coloursFromTitle, CATEGORY_SIZES, CATEGORIES } from "../core/normalize.js";
 import { parseCard, intentFor, verdict } from "../core/verdict.js";
 
 const fx = JSON.parse(readFileSync(new URL("../fixtures/tops-blouse-2026-09-05.json", import.meta.url), "utf8"));
@@ -129,6 +129,37 @@ test("14 of 48 fixture titles say nothing about colour - the case Tier 3 exists 
   // would resolve.
   const silent = cards.filter((c) => c.colours.size === 0).length;
   assert.equal(silent, 14, `${silent} of ${cards.length} silent`);
+});
+
+// ------------------------------------------------- per-category sizes --------
+test("shoes are their own scale: half sizes parse, letters never infer", () => {
+  const eight = normalizeSize("8", "shoes");
+  assert.equal(eight.canonical, "US 8");
+  assert.equal(eight.kind, "shoe");
+  assert.equal(normalizeSize("8.5", "shoes").canonical, "US 8.5");
+  assert.equal(normalizeSize("9 1/2", "shoes").canonical, "US 9.5");
+  assert.equal(sizeMatches(eight, "8", "shoes"), "exact");
+  assert.equal(sizeMatches(eight, "9", "shoes"), "no");
+  // An 8 shoe is NOT a Medium. Under garment rules this would have come back
+  // "inferred" (US 8 -> M); in the shoe scale the letter is simply unreadable,
+  // so the answer is "unknown" (which dims, never hides) and never "inferred".
+  const vsLetter = sizeMatches(eight, "M", "shoes");
+  assert.notEqual(vsLetter, "inferred");
+  assert.equal(vsLetter, "unknown");
+  // and a letter is not a readable shoe size
+  assert.equal(normalizeSize("M", "shoes").confidence, "unknown");
+});
+
+test("garment categories still infer US numeric to letters", () => {
+  const four = normalizeSize("4", "tops");
+  assert.equal(sizeMatches(four, "S", "tops"), "inferred");
+  assert.equal(sizeMatches(normalizeSize("4", "dresses"), "S", "dresses"), "inferred");
+  // a jeans waist has no letter equivalent in the table, so it simply does not match
+  assert.equal(sizeMatches(normalizeSize("30", "bottoms"), "M", "bottoms"), "no");
+});
+
+test("every category offers quick-pick sizes", () => {
+  for (const c of CATEGORIES) assert.ok((CATEGORY_SIZES[c] || []).length > 0, c + " has no sizes");
 });
 
 // ---------------------------------------------------------- verdict ----------

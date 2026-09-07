@@ -14,23 +14,21 @@ const DEFAULTS = {
   query: "",
   department: "Women",
 };
-const CATEGORIES = ["tops", "bottoms", "dresses", "outerwear"];
+// Single source of truth for sizes, colours and brands lives in core/ - import
+// it so the popup can never drift from what the verdict engine actually knows.
+import { CATEGORY_SIZES, CATEGORIES, COLOUR_FAMILIES, BRAND_ALIASES } from "../core/normalize.js";
+
 const DEPARTMENTS = ["Women", "Men", "Kids", "All"];
 // Only categories whose Poshmark name we are sure of are sent as a facet; for
 // the rest we let the query do the work rather than risk an empty result page.
 const POSH_CATEGORY = { tops: "Tops", dresses: "Dresses" };
-const QUICK_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "1X", "2X", "3X"];
 const COLOUR_SWATCH = {
   black: "#1e1e1e", white: "#f2ede4", grey: "#9aa0a6", beige: "#d8c3a0",
   brown: "#6f4a2f", red: "#b23b3b", orange: "#e0863a", yellow: "#e6c43f",
   green: "#6f9e59", blue: "#4f79b0", purple: "#8a63b0", pink: "#e39ac2",
   multi: "conic-gradient(from 0deg,#e35d5d,#e6c43f,#6f9e59,#4f79b0,#8a63b0,#e35d5d)",
 };
-const KNOWN_BRANDS = [
-  "Vuori", "Rails", "Madewell", "Free People", "Anthropologie", "Aritzia",
-  "Lululemon", "Faherty", "Zara", "J.Crew", "Levi's", "Abercrombie & Fitch",
-  "ASTR the Label", "L'AGENCE", "Prana", "Joie", "Doen", "Vince Camuto",
-];
+const KNOWN_BRANDS = Object.keys(BRAND_ALIASES);
 const POSH_PAGE = /^https:\/\/poshmark\.com\/(search|category|brand)/;
 
 const $ = (id) => document.getElementById(id);
@@ -40,19 +38,31 @@ let state = structuredClone(DEFAULTS);
 
 const isAnyone = () => state.who === "anyone";
 
-/** Sizes for the current who+category. For "anyone" this is the read-only union. */
-function currentSizes() {
-  if (isAnyone()) {
-    return [...new Set(Object.values(state.profiles).flatMap((p) => p[state.category] || []))];
-  }
-  const person = state.profiles[state.who] || (state.profiles[state.who] = {});
-  return person[state.category] || (person[state.category] = []);
+/** Whose size rows to show: everyone when shopping for "anyone", else one person.
+ *  "Anyone" still shows every person's row EDITABLE - it must not lock them. */
+function peopleInScope() {
+  const names = Object.keys(state.profiles);
+  if (!names.length) { state.profiles.me = {}; return ["me"]; }
+  return isAnyone() ? names : [state.who].filter((n) => names.includes(n));
 }
 
-function setSizes(list) {
-  if (isAnyone()) return;               // the union is not directly editable
-  const person = state.profiles[state.who] || (state.profiles[state.who] = {});
-  person[state.category] = list;
+function sizesOf(person) {
+  const p = state.profiles[person] || (state.profiles[person] = {});
+  return p[state.category] || (p[state.category] = []);
+}
+
+function setSizesOf(person, list) {
+  const p = state.profiles[person] || (state.profiles[person] = {});
+  p[state.category] = list;
+}
+
+/** Pull any typed-but-not-committed size text out of the DOM into state. */
+function collectSizeText() {
+  for (const box of document.querySelectorAll(".pblock")) {
+    const who = box.dataset.person;
+    const inp = box.querySelector("input");
+    if (who && inp) setSizesOf(who, splitList(inp.value));
+  }
 }
 
 function renderWho() {
@@ -80,32 +90,53 @@ function renderCategory() {
 }
 
 function renderSizes() {
-  const sizes = currentSizes();
   const host = $("sizes");
   host.innerHTML = "";
-  for (const s of QUICK_SIZES) {
-    const on = sizes.some((x) => x.toLowerCase() === s.toLowerCase());
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "chip"; b.textContent = s;
-    b.setAttribute("aria-pressed", String(on));
-    b.disabled = isAnyone();
-    b.addEventListener("click", () => {
-      const cur = currentSizes().slice();
-      const i = cur.findIndex((x) => x.toLowerCase() === s.toLowerCase());
-      if (i >= 0) cur.splice(i, 1); else cur.push(s);
-      setSizes(cur);
-      renderSizes();
-    });
-    host.appendChild(b);
+  const quick = CATEGORY_SIZES[state.category] || CATEGORY_SIZES.tops;
+  const people = peopleInScope();
+
+  for (const person of people) {
+    const sizes = sizesOf(person);
+    const box = document.createElement("div");
+    box.className = "pblock";
+    box.dataset.person = person;
+    if (people.length > 1) {
+      const lab = document.createElement("div");
+      lab.className = "plabel";
+      lab.textContent = person;
+      box.appendChild(lab);
+    }
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    for (const s of quick) {
+      const on = sizes.some((x) => x.toLowerCase() === s.toLowerCase());
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "chip"; b.textContent = s;
+      b.setAttribute("aria-pressed", String(on));
+      b.addEventListener("click", () => {
+        collectSizeText();
+        const cur = sizesOf(person).slice();
+        const i = cur.findIndex((x) => x.toLowerCase() === s.toLowerCase());
+        if (i >= 0) cur.splice(i, 1); else cur.push(s);
+        setSizesOf(person, cur);
+        renderSizes();
+      });
+      chips.appendChild(b);
+    }
+    box.appendChild(chips);
+    const text = document.createElement("input");
+    text.type = "text";
+    text.value = sizes.join(", ");
+    text.placeholder = state.category === "shoes" ? "or type: 8.5" : "or type: US 8, 1X";
+    text.setAttribute("aria-label", person + " " + state.category + " sizes");
+    text.addEventListener("change", () => { setSizesOf(person, splitList(text.value)); renderSizes(); });
+    box.appendChild(text);
+    host.appendChild(box);
   }
-  const text = $("sizesText");
-  text.value = sizes.join(", ");
-  text.disabled = isAnyone();
-  $("sizeHint").hidden = !isAnyone();
-  $("sizeFor").textContent = isAnyone()
-    ? "(everyone, read only)"
-    : "for " + state.who;
-  $("whoLabel").textContent = sizes.length ? state.category + " " + sizes.join("/") : "no sizes set";
+
+  const union = [...new Set(people.flatMap((p) => sizesOf(p)))];
+  $("sizeFor").textContent = people.length > 1 ? "(" + people.length + " people)" : "for " + people[0];
+  $("whoLabel").textContent = union.length ? state.category + " " + union.join("/") : "no sizes set";
 }
 
 function renderColours() {
@@ -214,10 +245,8 @@ async function refreshStatus() {
 // ---- events ------------------------------------------------------------------
 $("who").addEventListener("change", () => { state.who = $("who").value; renderSizes(); });
 $("category").addEventListener("change", () => { state.category = $("category").value; renderSizes(); });
-$("sizesText").addEventListener("change", () => { setSizes(splitList($("sizesText").value)); renderSizes(); });
-
 async function save({ silent = false } = {}) {
-  setSizes(splitList($("sizesText").value));            // catch an un-blurred edit
+  collectSizeText();                                    // catch un-blurred edits
   const stored = (await chrome.storage.local.get("refine")).refine || {};
   const next = Object.assign({}, DEFAULTS, stored, {
     profiles: state.profiles,

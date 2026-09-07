@@ -51,6 +51,10 @@
   .person .pname { font-weight: 600; max-width: 240px; }
   .sizes-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .sizes-row .psizes { flex: 1; min-width: 160px; }
+  .catrow { display: grid; grid-template-columns: 86px 1fr; gap: 8px 12px; align-items: start; padding: 9px 0; border-top: 1px solid var(--line-2); }
+  .catlabel { font-size: 12px; font-weight: 700; color: var(--muted); padding-top: 5px; }
+  .catrow input { margin-top: 7px; }
+  @media (max-width: 560px) { .catrow { grid-template-columns: 1fr; } }
 
   /* chips (sizes quick-add + colours) */
   .chips { display: flex; flex-wrap: wrap; gap: 7px; }
@@ -98,14 +102,15 @@
     <section>
       <h2>Who are you shopping for?</h2>
       <div class="field"><label for="who">Shopping for</label><select id="who"></select></div>
-      <div class="field"><label for="category">Category</label><select id="category"><option value="tops">Tops</option><option value="bottoms">Bottoms</option><option value="dresses">Dresses</option><option value="outerwear">Outerwear</option></select></div>
+      <div class="field"><label for="category">Filtering</label><select id="category"></select></div>
+      <p class="hint">Which set of sizes the search filter uses right now. Everyone's sizes for every category are kept below.</p>
     </section>
 
     <section>
       <h2>Your family &amp; their sizes</h2>
       <div id="people"></div>
       <button id="addPerson" class="btn ghost small" type="button">+ Add a person</button>
-      <p class="hint">A person can have several sizes and matches any of them. Tap a chip to add it, or type: <code>S, M</code>, <code>US 8</code>, <code>1X</code>.</p>
+      <p class="hint">Each person keeps sizes per category, because tops, bottoms and shoes are measured differently. Several sizes per row is fine and matches any of them. Tap a chip, or type: <code>S, M</code>, <code>US 8</code>, <code>8.5</code>.</p>
     </section>
 
     <section>
@@ -145,6 +150,6 @@
     <span id="status" class="saved" hidden>&#10003; Saved</span>
   </div></div>
 
-  <script src="options.js"></script>
+  <script type="module" src="options.js"></script>
 </body>
 </html>

@@ -17,11 +17,12 @@ import { normalizeSize, sizeMatches, normalizeBrand, coloursFromTitle } from "./
  * Parse the text fields of one result card into attributes with confidence.
  * `fields` mirrors the card selectors in the fixture: { title, size, condition }.
  */
-export function parseCard(fields) {
+export function parseCard(fields, category = "tops") {
   const title = String(fields.title || "").trim();
   return {
     title,
-    size: normalizeSize(fields.size),
+    category,
+    size: normalizeSize(fields.size, category),
     brand: normalizeBrand(title),
     colours: coloursFromTitle(title),
     condition: String(fields.condition || "").trim(),
@@ -61,7 +62,7 @@ export function verdict(card, intent) {
   let unknown = false;
 
   if (intent.sizes) {
-    const results = [...intent.sizes].map((w) => sizeMatches(card.size, w));
+    const results = [...intent.sizes].map((w) => sizeMatches(card.size, w, intent.category || card.category));
     if (results.includes("exact")) {
       // fits
     } else if (results.includes("inferred")) {

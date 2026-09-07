@@ -1,76 +1,131 @@
-// Options page: the shopper's family profiles and per-search constraints.
+// Options page: family profiles and per-search constraints.
 // chrome.storage.local only. No network. Stores { profiles, who, category,
-// brands, colours, hideMode, tier3 } - the exact shape content.js reads.
+// brands, colours, hideMode, tier3, query, department } - the shape content.js
+// reads. A person holds sizes for SEVERAL categories at once, because a top, a
+// pair of jeans and a shoe are measured in different systems.
+import { CATEGORY_SIZES, CATEGORIES, COLOUR_FAMILIES, BRAND_ALIASES } from "../core/normalize.js";
 
 const DEFAULTS = {
-  profiles: { me: { tops: [] } },
+  profiles: { me: {} },
   who: "me",
   category: "tops",
   brands: [],
   colours: [],
   hideMode: "fade",
   tier3: true,
+  query: "",
+  department: "Women",
 };
 
-// The 13 colour families the verdict engine knows, each with a representative
-// swatch. Order roughly by hue for a tidy palette.
-const COLOUR_SWATCH = {
+// Presentation only: a representative swatch per family the engine knows.
+const SWATCH = {
   black: "#1e1e1e", white: "#f2ede4", grey: "#9aa0a6", beige: "#d8c3a0",
   brown: "#6f4a2f", red: "#b23b3b", orange: "#e0863a", yellow: "#e6c43f",
   green: "#6f9e59", blue: "#4f79b0", purple: "#8a63b0", pink: "#e39ac2",
   multi: "conic-gradient(from 0deg,#e35d5d,#e6c43f,#6f9e59,#4f79b0,#8a63b0,#e35d5d)",
 };
-// Brands the alias table knows - offered as autocomplete, not a hard limit.
-const KNOWN_BRANDS = [
-  "Vuori", "Rails", "Madewell", "Free People", "Anthropologie", "Aritzia",
-  "Lululemon", "Faherty", "Zara", "J.Crew", "Levi's", "Abercrombie & Fitch",
-  "ASTR the Label", "L'AGENCE", "Prana", "Joie", "Doen", "Vince Camuto",
-];
-// Quick-add sizes for tops.
-const QUICK_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "1X", "2X", "3X"];
+const KNOWN_BRANDS = Object.keys(BRAND_ALIASES);
 
 const $ = (id) => document.getElementById(id);
-let state = structuredClone(DEFAULTS);
-
 const splitList = (t) => String(t || "").split(",").map((s) => s.trim()).filter(Boolean);
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-function addSize(input, size) {
-  const cur = splitList(input.value);
-  if (!cur.some((s) => s.toLowerCase() === size.toLowerCase())) cur.push(size);
-  input.value = cur.join(", ");
+let state = structuredClone(DEFAULTS);
+
+function sizesOf(person, cat) {
+  const p = state.profiles[person] || (state.profiles[person] = {});
+  return p[cat] || (p[cat] = []);
+}
+function setSizesOf(person, cat, list) {
+  const p = state.profiles[person] || (state.profiles[person] = {});
+  p[cat] = list;
+}
+
+/** Pull typed-but-not-committed size text out of the DOM. */
+function collectSizeText() {
+  for (const row of document.querySelectorAll(".catrow")) {
+    const person = row.closest(".person").dataset.person;
+    const cat = row.dataset.cat;
+    const inp = row.querySelector("input");
+    if (person && cat && inp) setSizesOf(person, cat, splitList(inp.value));
+  }
 }
 
 function renderPeople() {
   const host = $("people");
   host.innerHTML = "";
-  for (const [name, cats] of Object.entries(state.profiles)) {
+  for (const name of Object.keys(state.profiles)) {
     const box = document.createElement("div");
     box.className = "person";
-    const sizes = (cats[state.category] || []).join(", ");
-    box.innerHTML =
-      '<header>' +
-        '<input type="text" class="pname" value="' + escapeHtml(name) + '" aria-label="Name">' +
-        '<button class="btn ghost small remove" type="button">Remove</button>' +
-      '</header>' +
-      '<div class="sizes-row">' +
-        '<input type="text" class="psizes" value="' + escapeHtml(sizes) + '" placeholder="S, M" aria-label="' + escapeHtml(name) + ' sizes">' +
-      '</div>' +
-      '<div class="chips quick" style="margin-top:8px"></div>';
-    const psizes = box.querySelector(".psizes");
-    const quick = box.querySelector(".quick");
-    for (const s of QUICK_SIZES) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "chip"; b.textContent = s;
-      b.addEventListener("click", () => { addSize(psizes, s); });
-      quick.appendChild(b);
-    }
-    box.querySelector(".remove").addEventListener("click", () => {
-      collect();
+    box.dataset.person = name;
+
+    const head = document.createElement("header");
+    const nameInput = document.createElement("input");
+    nameInput.type = "text"; nameInput.className = "pname"; nameInput.value = name;
+    nameInput.setAttribute("aria-label", "Name");
+    nameInput.addEventListener("change", () => {
+      const next = nameInput.value.trim();
+      if (!next || next === name || state.profiles[next]) { nameInput.value = name; return; }
+      collectSizeText();
+      const rebuilt = {};
+      for (const [k, v] of Object.entries(state.profiles)) rebuilt[k === name ? next : k] = v;
+      state.profiles = rebuilt;
+      if (state.who === name) state.who = next;
+      renderAll();
+    });
+    const rm = document.createElement("button");
+    rm.type = "button"; rm.className = "btn ghost small remove"; rm.textContent = "Remove";
+    rm.addEventListener("click", () => {
+      collectSizeText();
       delete state.profiles[name];
       if (state.who === name) state.who = Object.keys(state.profiles)[0] || "anyone";
       renderAll();
     });
+    head.appendChild(nameInput); head.appendChild(rm);
+    box.appendChild(head);
+
+    for (const cat of CATEGORIES) {
+      const sizes = sizesOf(name, cat);
+      const row = document.createElement("div");
+      row.className = "catrow";
+      row.dataset.cat = cat;
+
+      const lab = document.createElement("div");
+      lab.className = "catlabel";
+      lab.textContent = cap(cat);
+      row.appendChild(lab);
+
+      const right = document.createElement("div");
+      const chips = document.createElement("div");
+      chips.className = "chips";
+      for (const s of (CATEGORY_SIZES[cat] || [])) {
+        const on = sizes.some((x) => x.toLowerCase() === s.toLowerCase());
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "chip"; b.textContent = s;
+        b.setAttribute("aria-pressed", String(on));
+        b.addEventListener("click", () => {
+          collectSizeText();
+          const cur = sizesOf(name, cat).slice();
+          const i = cur.findIndex((x) => x.toLowerCase() === s.toLowerCase());
+          if (i >= 0) cur.splice(i, 1); else cur.push(s);
+          setSizesOf(name, cat, cur);
+          renderPeople();
+        });
+        chips.appendChild(b);
+      }
+      right.appendChild(chips);
+
+      const text = document.createElement("input");
+      text.type = "text"; text.value = sizes.join(", ");
+      text.placeholder = cat === "shoes" ? "or type: 8.5" : "or type: US 8, 1X";
+      text.setAttribute("aria-label", name + " " + cat + " sizes");
+      text.addEventListener("change", () => { setSizesOf(name, cat, splitList(text.value)); renderPeople(); });
+      right.appendChild(text);
+
+      row.appendChild(right);
+      box.appendChild(row);
+    }
     host.appendChild(box);
   }
 }
@@ -78,11 +133,22 @@ function renderPeople() {
 function renderWho() {
   const sel = $("who");
   sel.innerHTML = "";
-  for (const name of [...Object.keys(state.profiles), "anyone"]) {
+  for (const n of [...Object.keys(state.profiles), "anyone"]) {
     const o = document.createElement("option");
-    o.value = name;
-    o.textContent = name === "anyone" ? "Anyone in the family" : name;
-    if (name === state.who) o.selected = true;
+    o.value = n;
+    o.textContent = n === "anyone" ? "Anyone in the family" : n;
+    if (n === state.who) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+function renderCategory() {
+  const sel = $("category");
+  sel.innerHTML = "";
+  for (const c of CATEGORIES) {
+    const o = document.createElement("option");
+    o.value = c; o.textContent = cap(c);
+    if (c === state.category) o.selected = true;
     sel.appendChild(o);
   }
 }
@@ -90,12 +156,12 @@ function renderWho() {
 function renderColours() {
   const host = $("colours");
   host.innerHTML = "";
-  for (const [fam, sw] of Object.entries(COLOUR_SWATCH)) {
+  for (const fam of Object.keys(COLOUR_FAMILIES)) {
     const on = state.colours.includes(fam);
     const b = document.createElement("button");
     b.type = "button"; b.className = "chip"; b.setAttribute("aria-pressed", String(on));
-    b.innerHTML = '<span class="sw" style="background:' + sw + '"></span>' +
-      fam.charAt(0).toUpperCase() + fam.slice(1) + (on ? ' <span class="tick">&#10003;</span>' : "");
+    b.innerHTML = '<span class="sw" style="background:' + (SWATCH[fam] || "#999") + '"></span>' + cap(fam) +
+      (on ? ' <span class="tick">&#10003;</span>' : "");
     b.addEventListener("click", () => {
       const i = state.colours.indexOf(fam);
       if (i >= 0) state.colours.splice(i, 1); else state.colours.push(fam);
@@ -108,10 +174,7 @@ function renderColours() {
 function renderBrandsList() {
   const dl = $("known-brands");
   dl.innerHTML = "";
-  for (const b of KNOWN_BRANDS) {
-    const o = document.createElement("option");
-    o.value = b; dl.appendChild(o);
-  }
+  for (const b of KNOWN_BRANDS) { const o = document.createElement("option"); o.value = b; dl.appendChild(o); }
 }
 
 function renderHideMode() {
@@ -122,43 +185,24 @@ function renderHideMode() {
 
 function renderAll() {
   renderWho();
+  renderCategory();
   renderPeople();
   renderColours();
   renderHideMode();
-  $("category").value = state.category;
   $("brands").value = state.brands.join(", ");
   $("tier3").checked = !!state.tier3;
 }
 
-function collect() {
-  const profiles = {};
-  const boxes = [...document.querySelectorAll(".person")];
-  boxes.forEach((box, idx) => {
-    const name = box.querySelector(".pname").value.trim();
-    if (!name) return;
-    const prev = Object.values(state.profiles)[idx] || {};
-    profiles[name] = Object.assign({}, prev, { [state.category]: splitList(box.querySelector(".psizes").value) });
-  });
-  state.profiles = Object.keys(profiles).length ? profiles : structuredClone(DEFAULTS.profiles);
-  if (!state.profiles[state.who] && state.who !== "anyone") state.who = Object.keys(state.profiles)[0] || "anyone";
-  state.category = $("category").value;
-  state.brands = splitList($("brands").value);
-  // colours are held live in state via the chip toggles; keep them lowercased
-  state.colours = state.colours.map((c) => c.toLowerCase());
-  state.tier3 = $("tier3").checked;
-  // who + hideMode are set by their own handlers
-}
-
 // events
 $("addPerson").addEventListener("click", () => {
-  collect();
+  collectSizeText();
   let n = "person"; let i = 2;
   while (state.profiles[n]) n = "person " + i++;
-  state.profiles[n] = { [state.category]: [] };
+  state.profiles[n] = {};
   renderAll();
 });
 $("who").addEventListener("change", () => { state.who = $("who").value; });
-$("category").addEventListener("change", () => { collect(); renderAll(); });
+$("category").addEventListener("change", () => { state.category = $("category").value; });
 $("hideMode").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-val]");
   if (!b) return;
@@ -166,8 +210,19 @@ $("hideMode").addEventListener("click", (e) => {
 });
 
 $("save").addEventListener("click", async () => {
-  collect();
-  await chrome.storage.local.set({ refine: state });
+  collectSizeText();
+  const stored = (await chrome.storage.local.get("refine")).refine || {};
+  const next = Object.assign({}, DEFAULTS, stored, {
+    profiles: state.profiles,
+    who: state.who,
+    category: state.category,
+    brands: splitList($("brands").value),
+    colours: state.colours.map((c) => c.toLowerCase()),
+    hideMode: state.hideMode,
+    tier3: $("tier3").checked,
+  });
+  await chrome.storage.local.set({ refine: next });
+  state = next;
   const s = $("status"); s.hidden = false;
   setTimeout(() => { s.hidden = true; }, 1600);
 });
@@ -177,5 +232,8 @@ $("save").addEventListener("click", async () => {
   const stored = await chrome.storage.local.get("refine");
   state = Object.assign(structuredClone(DEFAULTS), stored.refine || {});
   if (!Array.isArray(state.colours)) state.colours = [];
+  if (!state.profiles || typeof state.profiles !== "object" || !Object.keys(state.profiles).length) {
+    state.profiles = structuredClone(DEFAULTS.profiles);
+  }
   renderAll();
 })();

@@ -34,16 +34,47 @@ const US_NUMERIC_TO_LETTER = new Map([
 ]);
 
 /**
+ * Categories a shopper can hold sizes for, and the quick-pick sizes that make
+ * sense for each. A person carries sizes for SEVERAL of these at once, because
+ * a top, a pair of jeans and a shoe are measured in different systems.
+ */
+export const CATEGORY_SIZES = {
+  tops: ["XS", "S", "M", "L", "XL", "XXL", "1X", "2X", "3X"],
+  dresses: ["XS", "S", "M", "L", "XL", "0", "2", "4", "6", "8", "10", "12", "14"],
+  outerwear: ["XS", "S", "M", "L", "XL", "XXL"],
+  bottoms: ["24", "25", "26", "27", "28", "29", "30", "31", "32", "34", "XS", "S", "M", "L", "XL"],
+  shoes: ["5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "12"],
+};
+export const CATEGORIES = Object.keys(CATEGORY_SIZES);
+
+/** Shoes are their own scale: numbers only, half sizes, and NEVER inferred to a
+ *  letter (an 8 shoe is not a Medium). */
+const isShoe = (category) => String(category || "").toLowerCase() === "shoes";
+
+/**
  * Read the card's size field.
  *
  * Returns { canonical, kind, confidence, raw } where kind is 'letter' | 'plus' |
- * 'us' and confidence is 'exact' | 'unknown'. Nothing here infers; inference
- * happens in `sizeMatches`, where the shopper's intent is known.
+ * 'us' | 'shoe' and confidence is 'exact' | 'unknown'. Nothing here infers;
+ * inference happens in `sizeMatches`, where the shopper's intent is known.
+ * `category` selects the size system; it defaults to the garment one.
  */
-export function normalizeSize(raw) {
+export function normalizeSize(raw, category = "tops") {
   const text = String(raw || "").trim();
   if (!text) return { canonical: null, kind: null, confidence: "unknown", raw: text };
   let t = text.toLowerCase().replace(/^size[:\s]+/, "").trim();
+
+  if (isShoe(category)) {
+    // 8, 8.5, us 9, 9 1/2 -> a shoe number. Anything else is unknown.
+    const half = t.match(/^(?:us\s*)?(\d{1,2})\s*1\/2$/);
+    if (half) return { canonical: "US " + half[1] + ".5", kind: "shoe", confidence: "exact", raw: text };
+    const sh = t.match(/^(?:us\s*)?(\d{1,2})(?:\.(0|5))?$/);
+    if (sh) {
+      const n = sh[2] === "5" ? sh[1] + ".5" : sh[1];
+      return { canonical: "US " + n, kind: "shoe", confidence: "exact", raw: text };
+    }
+    return { canonical: null, kind: null, confidence: "unknown", raw: text };
+  }
 
   // `M/M`, `S / S` - the same size typed twice by a seller filling two boxes.
   const doubled = t.match(/^([a-z0-9\-]+)\s*\/\s*([a-z0-9\-]+)$/);
@@ -68,11 +99,13 @@ export function normalizeSize(raw) {
  * numeric card matched to a letter intent (or vice versa) through the
  * conversion table - shown, but flagged, because brands disagree about it.
  */
-export function sizeMatches(cardSize, wanted) {
+export function sizeMatches(cardSize, wanted, category = "tops") {
   if (!cardSize || cardSize.confidence === "unknown") return "unknown";
-  const want = normalizeSize(wanted);
+  const want = normalizeSize(wanted, category);
   if (want.confidence === "unknown") return "unknown";
   if (cardSize.canonical === want.canonical) return "exact";
+  // Shoes never cross scales - there is no letter a shoe number means.
+  if (cardSize.kind === "shoe" || want.kind === "shoe") return "no";
   if (cardSize.kind === want.kind) return "no";
   // cross-scale: US numeric <-> letter
   const usSide = cardSize.kind === "us" ? cardSize : want.kind === "us" ? want : null;

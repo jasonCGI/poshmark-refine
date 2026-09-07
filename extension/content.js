@@ -88,7 +88,7 @@
   function judge(tile) {
     const fields = { title: text(tile, SEL.title), size: text(tile, SEL.size), condition: text(tile, SEL.condition) };
     if (!fields.title) return;
-    const card = parseCard(fields);
+    const card = parseCard(fields, settings.category);
     const link = tile.querySelector(SEL.link);
     const path = link ? (link.getAttribute("href") || "").split("?")[0] : "";
     if (path && colourCache.has(path)) {
