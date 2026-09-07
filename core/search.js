@@ -1,10 +1,24 @@
 // Building a Poshmark search URL. Shared by the popup and the brand-site
 // bridge so the two can never disagree about what a search means.
 
-// Only categories whose Poshmark facet name we have actually verified are sent.
-// For the rest the query does the work, because a wrong facet lands the shopper
-// on an empty result page, which looks like the extension is broken.
-export const POSH_CATEGORY = { tops: "Tops", dresses: "Dresses" };
+// Poshmark's own category facet names, READ OFF ITS OWN LINKS rather than
+// guessed - a wrong facet lands the shopper on an empty result page, which looks
+// exactly like the extension being broken. Note the underscore-and-ampersand
+// convention ("Jackets_&_Coats"), which is not something to invent.
+export const POSH_CATEGORY = {
+  tops: "Tops",
+  dresses: "Dresses",
+  outerwear: "Jackets_&_Coats",
+  bottoms: "Pants_&_Jumpsuits",
+  shoes: "Shoes",
+};
+
+/** Other verified facets, for when the category list grows. */
+export const POSH_FACETS_VERIFIED = [
+  "Tops", "Dresses", "Jackets_&_Coats", "Pants_&_Jumpsuits", "Shoes", "Jeans",
+  "Shorts", "Skirts", "Sweaters", "Swim", "Bags", "Accessories", "Jewelry",
+  "Intimates_&_Sleepwear",
+];
 export const DEPARTMENTS = ["Women", "Men", "Kids", "All"];
 
 /** https://poshmark.com/search?query=...&department=...&category=... */

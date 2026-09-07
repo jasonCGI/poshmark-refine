@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Poshmark Refine",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Makes Poshmark search respect the size, brand and colour you asked for. Works only on the page you loaded; sends nothing anywhere.",
   "permissions": [
     "storage"

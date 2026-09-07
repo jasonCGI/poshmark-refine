@@ -329,12 +329,15 @@ test("category is guessed from the product name", () => {
   assert.equal(guessCategory(""), "tops", "defaults rather than refusing");
 });
 
-test("the search URL is the shared one, and only verified facets are sent", () => {
+test("the search URL is the shared one, and every facet sent is a verified one", () => {
   assert.equal(
     poshmarkSearchUrl({ query: "Vuori Elevation Square Neck Cami", department: "Women", category: "tops" }),
     "https://poshmark.com/search?query=Vuori+Elevation+Square+Neck+Cami&department=Women&category=Tops");
-  // bottoms has no verified facet name, so it is left off rather than risking
-  // an empty result page
-  assert.ok(!poshmarkSearchUrl({ query: "x", category: "bottoms" }).includes("category="));
+  // bottoms and outerwear now HAVE verified facet names, read off Poshmark's own
+  // category links (they were omitted while that was still a guess)
+  assert.match(poshmarkSearchUrl({ query: "x", category: "bottoms" }), /category=Pants_%26_Jumpsuits/);
+  assert.match(poshmarkSearchUrl({ query: "x", category: "outerwear" }), /category=Jackets_%26_Coats/);
+  // an unknown category still sends nothing rather than risk an empty page
+  assert.ok(!poshmarkSearchUrl({ query: "x", category: "hats" }).includes("category="));
   assert.ok(!poshmarkSearchUrl({ query: "x", department: "All" }).includes("department="));
 });

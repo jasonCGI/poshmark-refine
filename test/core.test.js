@@ -603,3 +603,24 @@ test("an AI-read brand can surface a card but must never discard one", () => {
   const byTitle = verdict(parseCard({ title: "Zara Ribbed Tank" }), want);
   assert.equal(byTitle.state, "hide");
 });
+
+// ---------------------------------------------- verified Poshmark facets ----
+import { poshmarkSearchUrl, POSH_CATEGORY, POSH_FACETS_VERIFIED } from "../core/search.js";
+
+test("every category maps to a facet read off Poshmark's own links", () => {
+  for (const [cat, facet] of Object.entries(POSH_CATEGORY)) {
+    assert.ok(POSH_FACETS_VERIFIED.includes(facet), cat + " -> " + facet + " was never verified");
+  }
+  // the convention is underscores AND a literal ampersand - not guessable
+  assert.equal(POSH_CATEGORY.outerwear, "Jackets_&_Coats");
+  assert.equal(POSH_CATEGORY.bottoms, "Pants_&_Jumpsuits");
+});
+
+test("the search URL encodes the ampersand facet correctly", () => {
+  const u = poshmarkSearchUrl({ query: "vuori", department: "Women", category: "outerwear" });
+  assert.match(u, /category=Jackets_%26_Coats/, "& must be percent-encoded in the query string");
+  assert.match(u, /query=vuori/);
+  assert.match(u, /department=Women/);
+  // All departments means no department facet at all
+  assert.ok(!poshmarkSearchUrl({ query: "x", department: "All" }).includes("department="));
+});
