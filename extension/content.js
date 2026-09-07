@@ -86,6 +86,10 @@
   }
 
   function judge(tile) {
+    // Mark every tile we look at, titled or not (ad tiles have no title). The
+    // observer and the convergence check below both key off this, so a tile we
+    // deliberately skip cannot spin them forever.
+    tile.dataset.pmrSeen = "1";
     const fields = { title: text(tile, SEL.title), size: text(tile, SEL.size), condition: text(tile, SEL.condition) };
     if (!fields.title) return;
     const card = parseCard(fields, settings.category);
@@ -269,6 +273,12 @@
     } finally {
       if (mo) mo.observe(document.body, { childList: true, subtree: true });
       applying = false;
+      // Tiles appended WHILE we were writing went out with the observer's record
+      // queue on disconnect. judge() marks every tile it looks at, so one more
+      // pass picks up any stragglers and then finds none - this converges.
+      if (grid.querySelector(SEL.tile + ":not([data-pmr-seen])")) {
+        requestAnimationFrame(apply);
+      }
     }
   }
 
@@ -287,7 +297,7 @@
       for (const n of m.addedNodes) {
         if (n.nodeType !== 1) continue;
         const tiles = n.matches?.(SEL.tile) ? [n] : (n.querySelectorAll ? n.querySelectorAll(SEL.tile) : []);
-        for (const t of tiles) if (!t.dataset.pmrOrder) { fresh = true; break; }
+        for (const t of tiles) if (!t.dataset.pmrSeen) { fresh = true; break; }
         if (fresh) break;
       }
       if (fresh) break;
