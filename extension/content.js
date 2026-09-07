@@ -269,6 +269,24 @@
     if (tile) hoverRead(tile);
   }, { passive: true });
 
+  // The popup asks this page how it is doing so it can show live counts (or
+  // tell the shopper to refresh a tab that predates the extension load).
+  chrome.runtime.onMessage.addListener((msg, sender, respond) => {
+    if (!msg || msg.type !== "pmr:status") return;
+    const intent = currentIntent();
+    const counts = { show: 0, dim: 0, hide: 0 };
+    const grid = findGrid();
+    if (grid) {
+      for (const t of grid.querySelectorAll(SEL.tile)) {
+        const s = t.classList.contains("pmr-show") ? "show"
+          : t.classList.contains("pmr-dim") ? "dim"
+          : t.classList.contains("pmr-hide") ? "hide" : null;
+        if (s) counts[s]++;
+      }
+    }
+    respond({ active: !!(intent.sizes || intent.brands || intent.colours), ...counts });
+  });
+
   chrome.storage.onChanged.addListener(async (changes) => {
     if (changes.refine) { await loadSettings(); apply(); }
   });

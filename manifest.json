@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Poshmark Refine",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Makes Poshmark search respect the size, brand and colour you asked for. Works only on the page you loaded; sends nothing anywhere.",
   "permissions": ["storage"],
   "host_permissions": ["https://poshmark.com/*"],
@@ -27,6 +27,7 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "Poshmark Refine settings (click to open)"
+    "default_title": "Poshmark Refine",
+    "default_popup": "extension/popup.html"
   }
 }
