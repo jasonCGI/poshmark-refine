@@ -155,6 +155,20 @@ const BRAND_INDEX = Object.entries(BRAND_ALIASES)
  * { canonical, confidence } with confidence 'title' (found in title) or
  * 'unknown' (no known brand word present - NOT "no brand").
  */
+/**
+ * The brand index with the shopper's own corrections folded in.
+ *
+ * The table has always claimed it "grows from the shopper's corrections"; this
+ * is what makes that true. Their aliases go in FIRST and the whole thing is
+ * re-sorted longest-first, so a correction can also override a shipped alias.
+ * `extra` is { alias: "Canonical Brand" }.
+ */
+export function brandIndexWith(extra) {
+  if (!extra || !Object.keys(extra).length) return BRAND_INDEX;
+  return [...Object.entries(extra).map(([a, c]) => [String(a).toLowerCase(), c]), ...BRAND_INDEX]
+    .sort((a, b) => b[0].length - a[0].length);
+}
+
 export function normalizeBrand(title, aliases = BRAND_INDEX) {
   const t = " " + String(title || "").toLowerCase().replace(/[^\p{L}\p{N}'’&.]+/gu, " ") + " ";
   for (const [alias, canon] of aliases) {
@@ -316,7 +330,15 @@ const COLOUR_INDEX = Object.entries(COLOUR_FAMILIES)
  * Multi-word phrases match before their single words (`dusty mauve` before
  * `mauve`) so a phrase counts once.
  */
-export function coloursFromTitle(title) {
+/** The colour index with the shopper's own words folded in. `extra` is
+ *  { word: "family" } - "bay" -> blue, or a shade we simply do not know. */
+export function colourIndexWith(extra) {
+  if (!extra || !Object.keys(extra).length) return COLOUR_INDEX;
+  return [...Object.entries(extra).map(([w, f]) => [String(w).toLowerCase(), f]), ...COLOUR_INDEX]
+    .sort((a, b) => b[0].length - a[0].length);
+}
+
+export function coloursFromTitle(title, index = COLOUR_INDEX) {
   let t = " " + String(title || "").toLowerCase().replace(/[^\p{L}\p{N}\-]+/gu, " ") + " ";
   const found = new Set();
   // A word can legitimately belong to SEVERAL families - the table puts "cream"
@@ -324,9 +346,9 @@ export function coloursFromTitle(title) {
   // the first family that claimed it silently dropped the others, so a beige
   // filter hid a cream top. Collect every family for a word, THEN consume it.
   const byWord = new Map();
-  for (const [word, family] of COLOUR_INDEX) {
+  for (const [word, family] of index) {
     if (!byWord.has(word)) byWord.set(word, []);
-    byWord.get(word).push(family);
+    if (!byWord.get(word).includes(family)) byWord.get(word).push(family);
   }
   for (const [word, families] of byWord) {
     const needle = " " + word + " ";

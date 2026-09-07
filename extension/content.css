@@ -102,3 +102,34 @@ body.pmr-reveal #pmr-hud button.pmr-hud-reveal { background: var(--pmr-ink); col
 @media (prefers-reduced-motion: no-preference) {
   #pmr-hud { transition: opacity .15s ease; }
 }
+
+/* ---- correction popover (click a badge to teach Refine) ------------------ */
+.pmr-badge { pointer-events: auto; cursor: pointer; }
+#pmr-correct {
+  position: absolute; top: 8px; left: 8px; right: 8px; z-index: 20;
+  font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--pmr-ink); background: var(--pmr-paper);
+  border: 1px solid var(--pmr-line); border-radius: 8px;
+  padding: 9px 10px; box-shadow: var(--pmr-shadow); text-align: left;
+}
+#pmr-correct .pmr-correct-hd { font-weight: 700; margin-bottom: 4px; }
+#pmr-correct .pmr-correct-t { color: var(--pmr-muted); font-size: 11px; margin-bottom: 7px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pmr-correct label { display: block; font-size: 11px; color: var(--pmr-muted); margin: 6px 0 3px; }
+#pmr-correct input {
+  font: inherit; width: 100%; padding: 5px 7px; border-radius: 6px;
+  border: 1px solid var(--pmr-line); background: var(--pmr-match-bg); color: var(--pmr-ink);
+}
+#pmr-correct .pmr-c-colours { display: flex; flex-wrap: wrap; gap: 4px; }
+#pmr-correct .pmr-c-chip {
+  font: inherit; font-size: 11px; cursor: pointer; padding: 3px 7px; border-radius: 999px;
+  border: 1px solid var(--pmr-line); background: transparent; color: var(--pmr-ink);
+}
+#pmr-correct .pmr-c-chip.on { background: var(--pmr-match); color: #fff; border-color: var(--pmr-match); }
+#pmr-correct .pmr-correct-ft { display: flex; gap: 6px; margin-top: 9px; }
+#pmr-correct button.pmr-c-save,
+#pmr-correct button.pmr-c-cancel {
+  font: inherit; font-weight: 600; cursor: pointer; padding: 5px 10px; border-radius: 6px;
+  border: 1px solid var(--pmr-line); background: transparent; color: var(--pmr-ink);
+}
+#pmr-correct button.pmr-c-save { background: var(--pmr-match); color: #fff; border-color: var(--pmr-match); }

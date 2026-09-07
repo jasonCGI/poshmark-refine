@@ -14,20 +14,25 @@
 import {
   normalizeSize, sizeMatches, normalizeBrand, coloursFromTitle,
   parsePrice, normalizeCondition, matchesColourTerm,
+  brandIndexWith, colourIndexWith,
 } from "./normalize.js";
 
 /**
  * Parse the text fields of one result card into attributes with confidence.
  * `fields` mirrors the card selectors in the fixture: { title, size, condition }.
  */
-export function parseCard(fields, category = "tops") {
+export function parseCard(fields, category = "tops", corrections = null) {
   const title = String(fields.title || "").trim();
+  // The shopper's corrections extend the shipped tables; they never replace the
+  // reasoning. A corrected brand is still "found in the title", not a guess.
+  const brandIdx = brandIndexWith(corrections && corrections.brands);
+  const colourIdx = colourIndexWith(corrections && corrections.colours);
   return {
     title,
     category,
     size: normalizeSize(fields.size, category),
-    brand: normalizeBrand(title),
-    colours: coloursFromTitle(title),
+    brand: normalizeBrand(title, brandIdx),
+    colours: coloursFromTitle(title, colourIdx),
     price: parsePrice(fields.price),
     condition: String(fields.condition || "").trim(),
     // Poshmark badges NWT and shows nothing for used, so an EMPTY badge is real

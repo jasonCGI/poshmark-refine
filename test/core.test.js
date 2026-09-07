@@ -13,6 +13,7 @@ import { compareVersions, isNewer, shouldCheck, fetchLatestVersion } from "../co
 import {
   capturePreset, applyPreset, upsertPreset, removePreset, describePreset, PRESET_FIELDS,
 } from "../core/presets.js";
+import { brandIndexWith, colourIndexWith } from "../core/normalize.js";
 
 const fx = JSON.parse(readFileSync(new URL("../fixtures/tops-blouse-2026-09-05.json", import.meta.url), "utf8"));
 const cards = fx.rows.map(([title, size, condition]) => parseCard({ title, size, condition }));
@@ -460,4 +461,35 @@ test("a preset describes itself for the chip tooltip", () => {
 test("PRESET_FIELDS never includes profiles - that is the whole guarantee", () => {
   assert.ok(!PRESET_FIELDS.includes("profiles"));
   assert.ok(PRESET_FIELDS.includes("who"));
+});
+
+// ------------------------------------------------------- corrections --------
+test("a correction teaches the WORD, so it applies to every future listing", () => {
+  // the table has always claimed it grows from corrections; this is that
+  assert.equal(normalizeBrand("Alo Yoga Ribbed Tank").confidence, "unknown");
+  const idx = brandIndexWith({ "alo yoga": "Alo Yoga" });
+  assert.equal(normalizeBrand("Alo Yoga Ribbed Tank", idx).canonical, "Alo Yoga");
+  // and it is not card-specific - a different listing benefits too
+  assert.equal(normalizeBrand("ALO YOGA Airlift Legging", idx).canonical, "Alo Yoga");
+});
+
+test("a corrected colour word joins the family it was taught", () => {
+  assert.equal(coloursFromTitle("Bay Ribbed Tank").size, 0, "unknown shade is unknown");
+  const idx = colourIndexWith({ bay: "blue" });
+  assert.ok(coloursFromTitle("Bay Ribbed Tank", idx).has("blue"));
+  // shipped vocabulary still works alongside the correction
+  assert.ok(coloursFromTitle("Sage Cami", idx).has("green"));
+});
+
+test("a correction can override a shipped alias, longest match still wins", () => {
+  const idx = brandIndexWith({ "free people": "FP Movement" });
+  assert.equal(normalizeBrand("Free People Tank", idx).canonical, "FP Movement");
+});
+
+test("parseCard threads corrections through without changing its reasoning", () => {
+  const corr = { brands: { "alo yoga": "Alo Yoga" }, colours: { bay: "blue" } };
+  const card = parseCard({ title: "Alo Yoga Bay Ribbed Tank", size: "M" }, "tops", corr);
+  assert.equal(card.brand.canonical, "Alo Yoga");
+  assert.equal(card.brand.confidence, "title", "still 'found in the title', not a guess");
+  assert.ok(card.colours.has("blue"));
 });

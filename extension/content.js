@@ -10,7 +10,9 @@
 (async () => {
   const core = await import(chrome.runtime.getURL("core/verdict.js"));
   const { parseCard, intentFor, verdict, STATE_ORDER } = core;
-  const { coloursFromTitle, sizeFromText, colourwayCandidates } = await import(chrome.runtime.getURL("core/normalize.js"));
+  const N = await import(chrome.runtime.getURL("core/normalize.js"));
+  const { coloursFromTitle, sizeFromText, colourwayCandidates } = N;
+  const COLOUR_FAMILY_NAMES = Object.keys(N.COLOUR_FAMILIES);
   const G = await import(chrome.runtime.getURL("core/grid.js"));
 
   const SEL = {
@@ -30,6 +32,7 @@
     brands: [],
     colours: [],
     colourTerms: [],
+    corrections: { brands: {}, colours: {} },
     maxPrice: null,
     conditions: [],
     hideMode: "fade",        // 'fade' | 'hide'
@@ -126,7 +129,12 @@
     }
     const label = { show: "Match", dim: "Check", hide: "Off" }[v.state] || "";
     badge.textContent = label;
-    badge.setAttribute("aria-label", "Poshmark Refine: " + label);
+    badge.setAttribute("aria-label", "Poshmark Refine: " + label + ". Click to correct.");
+    badge.title = "Click to teach Refine about this listing";
+    if (!badge.dataset.pmrWired) {
+      badge.dataset.pmrWired = "1";
+      badge.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); openCorrect(tile); });
+    }
     let strip = tile.querySelector(".pmr-strip");
     if (!strip) {
       strip = document.createElement("div");
@@ -137,6 +145,67 @@
     strip.textContent = lines.length ? lines.join(" · ") : "";
     strip.hidden = lines.length === 0;
     tile.dataset.pmrOrder = String(STATE_ORDER[v.state]);
+  }
+
+  // ---- correction affordance -----------------------------------------------
+  // The tables have always said they "grow from the shopper's corrections".
+  // This is where a correction is made: click a badge, tell it the brand or the
+  // colour it could not read, and it remembers - for every listing, not just
+  // this one, because the correction teaches the WORD, not the card.
+  function closeCorrect() { document.getElementById("pmr-correct")?.remove(); }
+
+  async function saveCorrection(kind, key, value) {
+    const stored = (await chrome.storage.local.get("refine")).refine || {};
+    const corr = Object.assign({ brands: {}, colours: {} }, stored.corrections);
+    corr[kind] = Object.assign({}, corr[kind], { [String(key).toLowerCase()]: value });
+    await chrome.storage.local.set({ refine: Object.assign({}, stored, { corrections: corr }) });
+    // storage.onChanged re-runs apply(), so every card re-judges with the new word
+  }
+
+  function openCorrect(tile) {
+    closeCorrect();
+    const title = text(tile, SEL.title);
+    const box = document.createElement("div");
+    box.id = "pmr-correct";
+    box.innerHTML =
+      '<div class="pmr-correct-hd">Teach Refine</div>' +
+      '<div class="pmr-correct-t"></div>' +
+      '<label>This brand is</label><input class="pmr-c-brand" type="text" placeholder="e.g. Vuori">' +
+      '<label>This colour is</label><div class="pmr-c-colours"></div>' +
+      '<div class="pmr-correct-ft"><button class="pmr-c-save">Save</button>' +
+      '<button class="pmr-c-cancel">Cancel</button></div>';
+    box.querySelector(".pmr-correct-t").textContent = title;
+
+    // which WORD are we teaching? the longest word not already understood
+    const card = parseCard({ title }, settings.category, settings.corrections);
+    const words = title.split(/[^\p{L}\p{N}'’-]+/u).filter((w) => w.length > 2);
+    const unknownWord = words.find((w) => w.length > 3) || words[0] || "";
+
+    let chosen = null;
+    const cols = box.querySelector(".pmr-c-colours");
+    for (const fam of COLOUR_FAMILY_NAMES) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "pmr-c-chip"; b.textContent = fam;
+      b.addEventListener("click", () => {
+        chosen = chosen === fam ? null : fam;
+        for (const o of cols.children) o.classList.toggle("on", o.textContent === chosen);
+      });
+      cols.appendChild(b);
+    }
+    box.querySelector(".pmr-c-brand").value = card.brand.canonical || "";
+    box.querySelector(".pmr-c-cancel").addEventListener("click", closeCorrect);
+    box.querySelector(".pmr-c-save").addEventListener("click", async () => {
+      const brand = box.querySelector(".pmr-c-brand").value.trim();
+      if (brand && card.brand.canonical !== brand) {
+        // teach the brand word that appears in this title, not the whole title
+        const key = words.find((w) => brand.toLowerCase().includes(w.toLowerCase())) || words[0];
+        if (key) await saveCorrection("brands", key, brand);
+      }
+      if (chosen && unknownWord) await saveCorrection("colours", unknownWord, chosen);
+      closeCorrect();
+    });
+    (tile.querySelector(SEL.media) || tile).appendChild(box);
+    box.querySelector(".pmr-c-brand").focus();
   }
 
   function judge(tile) {
@@ -155,7 +224,7 @@
     };
     if (!fields.title) return;
     learn(fields.title);
-    const card = parseCard(fields, settings.category);
+    const card = parseCard(fields, settings.category, settings.corrections);
     const link = tile.querySelector(SEL.link);
     const path = link ? (link.getAttribute("href") || "").split("?")[0] : "";
     if (path && colourCache.has(path)) {
