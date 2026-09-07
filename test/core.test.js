@@ -527,3 +527,79 @@ test("no colour anywhere is still unknown, not a mismatch", () => {
   assert.equal(v.state, "dim");
   assert.match(v.reasons.join(" "), /no colour in the title/);
 });
+
+// ------------------------------------------------ on-device AI tier ---------
+import {
+  resolveApi, availability, isReady, buildPrompt, parseAiAnswer, readAttributes,
+  mergeAiIntoCard, ATTRIBUTE_SCHEMA, AI_UNAVAILABLE,
+} from "../core/ai.js";
+
+test("a missing Prompt API is simply unavailable, never an error", async () => {
+  assert.equal(resolveApi({}), null);
+  assert.equal(await availability(null), AI_UNAVAILABLE);
+  assert.equal(await availability({ availability: () => { throw new Error("boom"); } }), AI_UNAVAILABLE);
+  assert.ok(!isReady(AI_UNAVAILABLE));
+  assert.ok(isReady("available"));
+  assert.ok(!isReady("downloadable"), "downloadable is not usable yet");
+});
+
+test("either spelling of the global is accepted", () => {
+  const lm = {};
+  assert.equal(resolveApi({ LanguageModel: lm }), lm);
+  assert.equal(resolveApi({ ai: { languageModel: lm } }), lm);
+});
+
+test("the prompt forbids inference and the schema allows null everywhere", () => {
+  const p = buildPrompt({ title: "Vuori Cami", body: "Size tag missing" });
+  assert.match(p, /ONLY what it actually states/);
+  assert.match(p, /Do not infer/);
+  assert.match(p, /return null/);
+  for (const f of ["size", "colour", "brand"]) {
+    assert.ok(ATTRIBUTE_SCHEMA.properties[f].type.includes("null"), f + " must be nullable");
+  }
+});
+
+test("an unparseable or evasive answer is all-unknown, never a partial guess", () => {
+  assert.deepEqual(parseAiAnswer(null), { size: null, colour: null, brand: null });
+  assert.deepEqual(parseAiAnswer("I could not tell"), { size: null, colour: null, brand: null });
+  assert.deepEqual(parseAiAnswer('{"size":"unknown","colour":"N/A","brand":""}'),
+    { size: null, colour: null, brand: null });
+  assert.deepEqual(parseAiAnswer('noise {"size":"M","colour":"Bay Blue","brand":"Vuori"} more'),
+    { size: "M", colour: "Bay Blue", brand: "Vuori" });
+});
+
+test("a failing model never breaks the caller", async () => {
+  const api = { create: async () => { throw new Error("model gone"); } };
+  assert.deepEqual(await readAttributes(api, { title: "x" }), { size: null, colour: null, brand: null });
+});
+
+test("the model may FILL an unknown but never overwrite what we already know", () => {
+  const known = parseCard({ title: "Rails Sage Top", size: "M" });
+  const merged = mergeAiIntoCard(known, { size: "XL", colour: "red", brand: "Zara" },
+    { normalizeSize, coloursFromTitle });
+  assert.equal(merged.size.canonical, "M", "a read size must not overwrite a stated one");
+  assert.equal(merged.brand.canonical, "Rails", "nor a brand found in the title");
+  assert.ok(merged.colours.has("green"), "nor a colour from the title");
+
+  const blank = parseCard({ title: "Ribbed Tank", size: "" });
+  const filled = mergeAiIntoCard(blank, { size: "M", colour: "navy", brand: "Vuori" },
+    { normalizeSize, coloursFromTitle });
+  assert.equal(filled.describedSize.canonical, "M");
+  assert.equal(filled.describedSize.confidence, "described", "weak, like a description size");
+  assert.ok(filled.bodyColours.has("blue"));
+  assert.equal(filled.brand.confidence, "ai");
+});
+
+test("an AI-read brand can surface a card but must never discard one", () => {
+  const want = intentFor({ me: { tops: [] } }, "me", "tops", { brands: ["Vuori"] });
+  const card = parseCard({ title: "Ribbed Tank" });
+  const aiSaysOther = mergeAiIntoCard(card, { size: null, colour: null, brand: "Zara" },
+    { normalizeSize, coloursFromTitle });
+  const v = verdict(aiSaysOther, want);
+  assert.equal(v.state, "dim", "a model reading must not hide a listing");
+  assert.match(v.reasons.join(" "), /kept for you to judge/);
+
+  // whereas the TABLE finding a different brand in the title still hides
+  const byTitle = verdict(parseCard({ title: "Zara Ribbed Tank" }), want);
+  assert.equal(byTitle.state, "hide");
+});

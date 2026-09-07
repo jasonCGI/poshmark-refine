@@ -14,6 +14,7 @@
   const { coloursFromTitle, sizeFromText, colourwayCandidates } = N;
   const COLOUR_FAMILY_NAMES = Object.keys(N.COLOUR_FAMILIES);
   const G = await import(chrome.runtime.getURL("core/grid.js"));
+  const AI = await import(chrome.runtime.getURL("core/ai.js"));
 
   const SEL = {
     tile: "div.tile-grid-redesign",
@@ -33,6 +34,7 @@
     colours: [],
     colourTerms: [],
     corrections: { brands: {}, colours: {} },
+    useAi: false,            // on-device Prompt API tier, opt-in
     maxPrice: null,
     conditions: [],
     hideMode: "fade",        // 'fade' | 'hide'
@@ -43,6 +45,8 @@
   const colourCache = new Map();   // listing path -> Set of colour families (this tab only)
   const sizeCache = new Map();     // listing path -> size described in the body
   const bodyCache = new Map();     // listing path -> body text, for colourway terms
+  const aiCache = new Map();       // listing path -> on-device reading (this tab)
+  let aiReady = null;              // null = not yet checked
 
   // Colourway vocabulary, LEARNED from the listings the shopper is already
   // looking at. There is no published list of a brand's current and former
@@ -232,6 +236,11 @@
     if (path && colourCache.has(path)) card.bodyColours = colourCache.get(path);
     if (path && sizeCache.get(path)) card.describedSize = sizeCache.get(path);
     if (path && bodyCache.has(path)) card.bodyText = bodyCache.get(path);
+    // The on-device reading is applied LAST and can only fill what is still
+    // unknown; mergeAiIntoCard refuses to overwrite anything already known.
+    if (path && aiCache.has(path)) {
+      Object.assign(card, AI.mergeAiIntoCard(card, aiCache.get(path), { normalizeSize: N.normalizeSize, coloursFromTitle }));
+    }
     const v = verdict(card, currentIntent());
     decorate(tile, v);
     tile.dataset.pmrPath = path;
@@ -281,6 +290,22 @@
     } finally {
       inflight = null;
     }
+    // Still unknown after reading the listing? Ask the on-device model, if the
+    // shopper turned it on and Chrome actually has it. One listing at a time,
+    // cached per tab, and nothing leaves the device.
+    if (settings.useAi && !aiCache.has(path)) {
+      if (aiReady === null) {
+        const api = AI.resolveApi(globalThis);
+        aiReady = api && AI.isReady(await AI.availability(api)) ? api : false;
+      }
+      if (aiReady) {
+        aiCache.set(path, await AI.readAttributes(aiReady, {
+          title: text(tile, SEL.title),
+          body: bodyCache.get(path) || "",
+        }));
+      }
+    }
+
     // A Tier-3 colour can move this card between show/dim/hide, so the grid has
     // to be reconciled - re-sorted and re-counted - not just this tile repainted.
     // apply() is re-entrancy guarded and resort() no-ops when the order is

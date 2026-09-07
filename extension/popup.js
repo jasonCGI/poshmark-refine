@@ -17,6 +17,7 @@ const DEFAULTS = {
   maxPrice: null,
   conditions: [],
   presets: [],
+  useAi: false,
 };
 // Single source of truth for sizes, colours and brands lives in core/ - import
 // it so the popup can never drift from what the verdict engine actually knows.
@@ -289,6 +290,7 @@ function renderAll() {
   $("q").value = state.query || "";
   $("brands").value = state.brands.join(", ");
   $("maxPrice").value = state.maxPrice ? String(state.maxPrice) : "";
+  $("useai").checked = !!state.useAi;
   $("nwt").setAttribute("aria-pressed", String((state.conditions || []).includes("nwt")));
   renderColourways();
   renderPresets();
@@ -360,6 +362,7 @@ $("prSave").addEventListener("click", savePreset);
 $("prName").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); savePreset(); } });
 $("cwInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addColourway(); } });
 $("maxPrice").addEventListener("input", () => mark("maxPrice"));
+$("useai").addEventListener("change", () => mark("useAi"));
 $("nwt").addEventListener("click", () => {
   const on = $("nwt").getAttribute("aria-pressed") === "true";
   $("nwt").setAttribute("aria-pressed", String(!on));
@@ -396,6 +399,7 @@ async function save({ silent = false } = {}) {
     colourTerms: state.colourTerms,
     maxPrice: Number($("maxPrice").value) || null,
     conditions: $("nwt").getAttribute("aria-pressed") === "true" ? ["nwt"] : [],
+    useAi: $("useai").checked,
     who: state.who,
     category: state.category,
     colours: state.colours.map((c) => c.toLowerCase()),

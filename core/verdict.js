@@ -111,8 +111,16 @@ export function verdict(card, intent) {
       unknown = true;
       reasons.push("no known brand in the title");
     } else if (!intent.brands.has(card.brand.canonical)) {
-      reasons.push(`brand ${card.brand.canonical}, you asked for ${[...intent.brands].join("/")}`);
-      return { state: "hide", reasons, notes, cause: "brand" };
+      // A brand READ BY THE MODEL is weak evidence, like a described size: good
+      // enough to surface, never good enough to discard. Only a brand found in
+      // the title by the table may hide a card.
+      if (card.brand.confidence === "ai") {
+        unknown = true;
+        reasons.push(`on-device read suggests ${card.brand.canonical} - kept for you to judge`);
+      } else {
+        reasons.push(`brand ${card.brand.canonical}, you asked for ${[...intent.brands].join("/")}`);
+        return { state: "hide", reasons, notes, cause: "brand" };
+      }
     }
   }
 
