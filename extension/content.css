@@ -37,7 +37,10 @@ body.pmr-reveal .tile-grid-redesign.pmr-hide { display: block; opacity: .34; fil
 /* Poshmark does not position the media wrapper, so we establish the containing
    block for the badge. Without this the badge escapes to a distant positioned
    ancestor and lands on unrelated page furniture. relative keeps it in flow. */
-.pmr-anchor { position: relative; }
+/* z-index:0 (not auto) makes this a STACKING CONTEXT, which confines the badge
+   inside the card. Without it the badge's z-index competes at page level and
+   paints over Poshmark's own chrome - it showed through the open mega-menu. */
+.pmr-anchor { position: relative; z-index: 0; }
 .pmr-badge {
   position: absolute; top: 8px; left: 8px; z-index: 5;
   display: inline-flex; align-items: center; gap: 4px;
