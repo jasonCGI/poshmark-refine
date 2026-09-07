@@ -5,6 +5,7 @@
 // pair of jeans and a shoe are measured in different systems.
 import { CATEGORY_SIZES, CATEGORIES, COLOUR_FAMILIES, BRAND_ALIASES } from "../core/normalize.js";
 import { hostKey } from "../core/brand.js";
+import { recordFit, learnedSize, forgetFit, explainFit, MIN_EVIDENCE } from "../core/fit.js";
 
 const DEFAULTS = {
   profiles: { me: {} },
@@ -368,3 +369,96 @@ async function removeSite(host) {
 $("bsAdd").addEventListener("click", addSite);
 $("bsUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addSite(); } });
 renderSites();
+
+// ---- fit memory (Tier 4) -----------------------------------------------------
+// Stored as a flat, visible ledger. A size profile that changed itself for
+// reasons nobody could inspect would be worse than no learning at all, so every
+// outcome is listed and individually removable, and the conclusion drawn from
+// them is shown next to them.
+
+const getLedger = async () => {
+  try { return (await chrome.storage.local.get("fitLedger")).fitLedger || []; } catch (e) { return []; }
+};
+
+function fitMsg(text, bad) {
+  const el = $("fitMsg");
+  el.textContent = text || "";
+  el.style.color = bad ? "#c0392b" : "";
+}
+
+function fillFitPickers() {
+  const who = $("fitPerson"), cat = $("fitCategory");
+  const keepWho = who.value, keepCat = cat.value;
+  who.innerHTML = "";
+  for (const name of Object.keys(state.profiles || {})) {
+    const o = document.createElement("option");
+    o.value = name; o.textContent = name;
+    who.appendChild(o);
+  }
+  if (!cat.options.length) {
+    for (const c of CATEGORIES) {
+      const o = document.createElement("option");
+      o.value = c; o.textContent = c;
+      cat.appendChild(o);
+    }
+  }
+  if (keepWho) who.value = keepWho;
+  if (keepCat) cat.value = keepCat;
+}
+
+async function renderFit() {
+  fillFitPickers();
+  const ledger = await getLedger();
+
+  // What has actually been concluded, per person/brand/category.
+  const learned = $("fitLearned");
+  learned.innerHTML = "";
+  const combos = new Map();
+  for (const e of ledger) combos.set([e.person, e.brand, e.category].join("|"), e);
+  const lessons = [];
+  for (const e of combos.values()) {
+    const l = learnedSize(ledger, e.person, e.brand, e.category);
+    if (l) lessons.push(`<li><b>${esc(e.person)}</b>, ${esc(e.category)}: ${esc(explainFit(l, e.brand))}</li>`);
+  }
+  learned.innerHTML = lessons.length
+    ? "<p class='hint' style='margin:0 0 6px'>Refine is now also looking for:</p><ul style='margin:0 0 4px 18px;font-size:13px'>" + lessons.join("") + "</ul>"
+    : "<p class='hint' style='margin:0'>Nothing concluded yet. It takes " + MIN_EVIDENCE +
+      " agreeing outcomes for the same size before a size is added.</p>";
+
+  const list = $("fitList");
+  list.innerHTML = "";
+  ledger.forEach((e, i) => {
+    const chip = document.createElement("span");
+    chip.className = "site";
+    chip.innerHTML = "<b>" + esc(e.person) + "</b><span class='host'>" + esc(e.brand) + " " +
+      esc(e.category) + " " + esc(e.size) + " &middot; " + (e.fits ? "fitted" : "did not fit") + "</span>";
+    const x = document.createElement("button");
+    x.type = "button";
+    x.title = "Forget this outcome";
+    x.textContent = "×";
+    x.addEventListener("click", async () => {
+      await chrome.storage.local.set({ fitLedger: forgetFit(await getLedger(), i) });
+      fitMsg("Forgotten.");
+      renderFit();
+    });
+    chip.appendChild(x);
+    list.appendChild(chip);
+  });
+}
+
+async function addFit(fits) {
+  const person = $("fitPerson").value;
+  const category = $("fitCategory").value;
+  const brand = $("fitBrand").value.trim();
+  const size = $("fitSize").value.trim();
+  if (!person || !brand || !size) { fitMsg("A person, a brand and a size are all needed.", true); return; }
+  const next = recordFit(await getLedger(), { person, brand, category, size, fits });
+  await chrome.storage.local.set({ fitLedger: next });
+  $("fitBrand").value = ""; $("fitSize").value = "";
+  fitMsg(`Recorded: ${size} in ${brand} ${fits ? "fitted" : "did not fit"} ${person}.`);
+  renderFit();
+}
+
+$("fitYes").addEventListener("click", () => addFit(true));
+$("fitNo").addEventListener("click", () => addFit(false));
+renderFit();

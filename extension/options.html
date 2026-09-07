@@ -138,6 +138,30 @@
     </section>
 
     <section>
+      <h2>Fit memory</h2>
+      <p class="hint" style="margin:0 0 10px">
+        Sizes on Poshmark are the seller's reading of a tag. Whether something
+        actually fits is what you learn when it arrives. Record that here and
+        Refine will start surfacing the size that really works for a brand.
+        It only ever <em>adds</em> a size, never hides a listing, and it waits
+        for two agreeing outcomes before acting on anything.
+      </p>
+      <div class="field">
+        <div class="row">
+          <select id="fitPerson" aria-label="Who"></select>
+          <select id="fitCategory" aria-label="Category"></select>
+          <input id="fitBrand" type="text" placeholder="Brand" style="flex:1" aria-label="Brand">
+          <input id="fitSize" type="text" placeholder="Size" style="width:80px" aria-label="Size">
+          <button id="fitYes" class="btn" type="button">Fitted</button>
+          <button id="fitNo" class="btn" type="button">Did not</button>
+        </div>
+        <span class="hint" id="fitMsg"></span>
+      </div>
+      <div id="fitLearned"></div>
+      <div id="fitList" class="chips" style="margin-top:8px"></div>
+    </section>
+
+    <section>
       <h2>Brand sites</h2>
       <p class="hint" style="margin:0 0 10px">
         On a brand's own product page, Refine can offer to find that exact item on

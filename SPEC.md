@@ -196,12 +196,18 @@ listed here so the spec does not read as though the tool stopped there.
 | 0.15.1 | two bugs found by looking at a real page: a HUD restored outside the viewport, and 35 of 48 covers left blank by the lazy-load handoff re-sorting interrupts |
 | 0.15.2 | the update bar states the two steps instead of linking to a page that does not answer the question |
 | 0.16.0 | a self-check that runs those live assertions on every popup open; brand sites the shopper adds, with a per-site permission |
+| 0.17.0 | a match names WHO it fits; an accessibility pass (dark-mode badge contrast failed AA at 1.88:1, and the correction popover was mouse-only); Tier 4 fit memory |
 
 Also built and not in the original slice: per-category size profiles (a person
 is not one size), a search box in the popup, and an opt-in daily update check.
 
-**Tier 4 (fit memory) is not built.** Nothing records whether a purchased item
-actually fitted, so no brand-level size learning exists.
+**Tier 4 (fit memory) shipped in 0.17.0.** `core/fit.js` records outcomes per
+person, brand and category, and adds the size that has consistently fitted. Two
+rules keep it honest: it takes two agreeing outcomes before acting (one is an
+anecdote), and it only ever WIDENS the search - a learned size is evidence about
+one garment, never grounds for discarding a listing. The ledger is a flat,
+visible list in settings, because a size profile that changed itself for reasons
+nobody could inspect would be worse than no learning at all.
 
 ## Open questions
 

@@ -14,6 +14,10 @@
   --pmr-off: #9a4b48;
   --pmr-off-bg: #f6ecec;
   --pmr-shadow: 0 1px 3px rgba(43, 36, 29, .18);
+  /* Badge ink. A hardcoded #fff was fine here and failed in dark mode, where
+     the state colours become light pastels: white on #7fce97 measures 1.88:1
+     against the 4.5 that 11px bold needs. Themed, both modes clear AA. */
+  --pmr-on-badge: #fff;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -22,6 +26,7 @@
     --pmr-check: #e0b256; --pmr-check-bg: #322a1a;
     --pmr-off: #d79a97; --pmr-off-bg: #322020;
     --pmr-shadow: 0 1px 4px rgba(0, 0, 0, .4);
+    --pmr-on-badge: #1b1b1b;   /* 9.17 / 8.75 / 7.35 on the three dark badges */
   }
 }
 
@@ -46,7 +51,7 @@ body.pmr-reveal .tile-grid-redesign.pmr-hide { display: block; opacity: .34; fil
   display: inline-flex; align-items: center; gap: 4px;
   font: 600 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
   letter-spacing: .01em; padding: 4px 7px; border-radius: 999px;
-  color: #fff; box-shadow: var(--pmr-shadow); pointer-events: none; user-select: none;
+  color: var(--pmr-on-badge); box-shadow: var(--pmr-shadow); pointer-events: none; user-select: none;
 }
 .pmr-badge::before { font-weight: 700; }
 .tile-grid-redesign.pmr-show .pmr-badge { background: var(--pmr-match); }
@@ -105,6 +110,14 @@ body.pmr-reveal #pmr-hud button.pmr-hud-reveal { background: var(--pmr-ink); col
 
 /* ---- correction popover (click a badge to teach Refine) ------------------ */
 .pmr-badge { pointer-events: auto; cursor: pointer; }
+.pmr-badge:focus-visible,
+#pmr-correct button:focus-visible,
+#pmr-correct input:focus-visible { outline: 3px solid var(--pmr-ink); outline-offset: 2px; }
+@media (prefers-color-scheme: dark) {
+  .pmr-badge:focus-visible,
+  #pmr-correct button:focus-visible,
+  #pmr-correct input:focus-visible { outline-color: var(--pmr-paper); }
+}
 #pmr-correct {
   position: absolute; top: 8px; left: 8px; right: 8px; z-index: 20;
   font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;

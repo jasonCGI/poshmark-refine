@@ -33,6 +33,7 @@ rule is why the asymmetries below exist rather than being special cases:
 | size stated on the card | hard filter - a mismatch is hidden with a reason |
 | size only described in prose ("fits like a medium") | surfaced as a match, never used to discard |
 | brand read by the on-device model | dims, never hides |
+| a size you learned fits this brand | **adds** that size and says why; never removes one |
 | colour contradicted by the **title** | hidden |
 | colour absent, or only in the coarse listing field | dimmed |
 
@@ -66,7 +67,7 @@ extension makes that is not to Poshmark.
 
 ## Status
 
-Shipping at **v0.16.0**, loaded and used in Chrome.
+Shipping at **v0.17.0**, loaded and used in Chrome.
 
 | piece | state |
 |---|---|
@@ -76,11 +77,12 @@ Shipping at **v0.16.0**, loaded and used in Chrome.
 | `core/search.js` | builds a Poshmark search URL from verified facets |
 | `core/brand.js` | reads a product off a brand's own page (JSON-LD), maps it to a search; any site the shopper adds |
 | `core/presets.js` | saved searches |
+| `core/fit.js` | fit memory - what actually fitted, per person, per brand |
 | `core/ai.js` | optional on-device Prompt API tier, last and fills-only |
 | `core/update.js` | opt-in update check |
 | `extension/` | content script, brand-page script, popup, options, service worker |
 | `fixtures/` | 48 captured result rows (text) + a real grid fragment (DOM) |
-| `test/` | **105 tests** - `core.test.js` against fixture text, `dom.test.js` in jsdom against the shipped modules |
+| `test/` | **124 tests** - `core.test.js` against fixture text, `dom.test.js` in jsdom against the shipped modules |
 
 The DOM tests import `core/grid.js`, which is the same module the content
 script imports, so the tests exercise shipped code rather than a copy of it.
@@ -89,7 +91,7 @@ Poshmark changes its markup, those tests fail before you find out on the site.
 
 ```
 npm install     # jsdom, for the DOM tests
-npm test        # 105 passing
+npm test        # 124 passing
 ```
 
 Node 20+ (uses `node:test`). jsdom is the only dependency, and it is dev-only -

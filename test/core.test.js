@@ -317,9 +317,40 @@ test("a size mismatch HIDES and says both sizes", () => {
   assert.match(v.reasons[0], /size L, you asked for S/);
 });
 
-test("an exact size match SHOWS with no reasons", () => {
+test("an exact size match SHOWS with no reasons, and names who it fits", () => {
   const v = verdict(parseCard({ title: "Rails Bretton Blouse", size: "S" }), intentFor(family, "partner", "tops"));
-  assert.deepEqual(v, { state: "show", reasons: [], notes: [] });
+  assert.deepEqual(v, { state: "show", reasons: [], notes: [], fits: ["partner"] });
+});
+
+test("shopping for ANYONE, a match says which of them it fits", () => {
+  // the gap the family feature opened: a union of everyone's sizes made every
+  // match anonymous, so the shopper still had to work out who by eye
+  const anyone = intentFor(family, "anyone", "tops");
+  const fitsOne = verdict(parseCard({ title: "Rails Bretton Blouse", size: "S" }), anyone);
+  assert.deepEqual(fitsOne.fits, ["partner"], "only the person whose size it is");
+  assert.equal(fitsOne.state, "show");
+
+  // a size two people share names both, in profile order rather than size order
+  const shared = Object.keys(family).filter((p) => (family[p].tops || []).includes("XS"));
+  if (shared.length > 1) {
+    const v = verdict(parseCard({ title: "Blouse", size: "XS" }), anyone);
+    assert.deepEqual(v.fits, shared);
+  }
+
+  // a hidden card fits nobody, whatever sizes were asked for
+  const miss = verdict(parseCard({ title: "Blouse", size: "3XL" }), anyone);
+  assert.equal(miss.state, "hide");
+  assert.deepEqual(miss.fits || [], [], "a card that was hidden fits no one");
+});
+
+test("owners survive the union so the badge can name a person", () => {
+  const anyone = intentFor(family, "anyone", "tops");
+  assert.ok(anyone.owners, "the union used to discard this");
+  for (const [size, people] of Object.entries(anyone.owners)) {
+    for (const p of people) {
+      assert.ok((family[p].tops || []).includes(size), p + " really does wear " + size);
+    }
+  }
 });
 
 test("an unreadable size DIMS, never hides", () => {

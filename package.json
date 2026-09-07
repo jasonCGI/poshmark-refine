@@ -1,11 +1,11 @@
 {
   "name": "poshmark-refine",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "private": true,
   "description": "Browser extension that enforces size, brand and colour on Poshmark search results, in the shopper's own session. Nothing leaves the machine.",
   "type": "module",
   "scripts": {
-    "test": "node --test test/core.test.js test/dom.test.js"
+    "test": "node --test test/core.test.js test/dom.test.js test/a11y.test.js test/fit.test.js"
   },
   "license": "MIT",
   "devDependencies": {

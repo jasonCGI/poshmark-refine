@@ -85,8 +85,13 @@
 
 
   async function loadSettings() {
-    const stored = await chrome.storage.local.get("refine");
+    // The fit ledger is a top-level key, not part of `refine`: it is a record of
+    // what happened, not a search preference, and keeping it separate means the
+    // merge logic that protects concurrent edits to `refine` never has to
+    // reason about it.
+    const stored = await chrome.storage.local.get(["refine", "fitLedger"]);
     settings = Object.assign({}, DEFAULTS, stored.refine || {});
+    settings.fitLedger = Array.isArray(stored.fitLedger) ? stored.fitLedger : null;
   }
 
   // The DOM layer lives in core/grid.js so jsdom can drive it in test/dom.test.js.
@@ -136,6 +141,7 @@
       colourTerms: settings.colourTerms,
       maxPrice: Number(settings.maxPrice) || null,
       conditions: settings.conditions,
+      fitLedger: settings.fitLedger,
     });
   }
 
@@ -158,13 +164,31 @@
       badge.className = "pmr-badge";
       media.appendChild(badge);
     }
-    const label = { show: "Match", dim: "Check", hide: "Off" }[v.state] || "";
+    // Shopping for the whole family, a bare "Match" makes you work out who it
+    // fits by eye. Name them. One or two fit on the badge; beyond that the
+    // count goes on the badge and the names go in its title.
+    let label = { show: "Match", dim: "Check", hide: "Off" }[v.state] || "";
+    let who = "";
+    const fits = (v.fits || []).filter(Boolean);
+    if (v.state !== "hide" && currentIntent().who === "anyone" && fits.length) {
+      label = fits.length <= 2 ? "Fits " + fits.join(" or ") : "Fits " + fits.length;
+      who = "Fits " + fits.join(", ") + ". ";
+    }
     badge.textContent = label;
-    badge.setAttribute("aria-label", "Poshmark Refine: " + label + ". Click to correct.");
-    badge.title = "Click to teach Refine about this listing";
+    // One title. Setting it twice meant the names never survived to the tooltip.
+    badge.title = who + "Click to teach Refine about this listing";
+    badge.setAttribute("aria-label", "Poshmark Refine: " + (who || label + ". ") + "Correct this listing");
     if (!badge.dataset.pmrWired) {
       badge.dataset.pmrWired = "1";
-      badge.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); openCorrect(tile); });
+      // A span with a click handler is a button nobody can reach. The whole
+      // correction feature was mouse-only until this.
+      badge.setAttribute("role", "button");
+      badge.setAttribute("tabindex", "0");
+      const open = (e) => { e.preventDefault(); e.stopPropagation(); openCorrect(tile); };
+      badge.addEventListener("click", open);
+      badge.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") open(e);
+      });
     }
     let strip = tile.querySelector(".pmr-strip");
     if (!strip) {
@@ -183,7 +207,14 @@
   // This is where a correction is made: click a badge, tell it the brand or the
   // colour it could not read, and it remembers - for every listing, not just
   // this one, because the correction teaches the WORD, not the card.
-  function closeCorrect() { document.getElementById("pmr-correct")?.remove(); }
+  // Whichever badge opened the popover, so every way out returns focus there -
+  // Escape, Cancel and Save alike, not just the one path that remembered to.
+  let correctOpener = null;
+  function closeCorrect(restoreFocus) {
+    document.getElementById("pmr-correct")?.remove();
+    if (restoreFocus && correctOpener && document.contains(correctOpener)) correctOpener.focus();
+    correctOpener = null;
+  }
 
   async function saveCorrection(kind, key, value) {
     const stored = (await chrome.storage.local.get("refine")).refine || {};
@@ -198,6 +229,8 @@
     const title = text(tile, SEL.title);
     const box = document.createElement("div");
     box.id = "pmr-correct";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", "Teach Refine about this listing");
     box.innerHTML =
       '<div class="pmr-correct-hd">Teach Refine</div>' +
       '<div class="pmr-correct-t"></div>' +
@@ -224,7 +257,7 @@
       cols.appendChild(b);
     }
     box.querySelector(".pmr-c-brand").value = card.brand.canonical || "";
-    box.querySelector(".pmr-c-cancel").addEventListener("click", closeCorrect);
+    box.querySelector(".pmr-c-cancel").addEventListener("click", () => closeCorrect(true));
     box.querySelector(".pmr-c-save").addEventListener("click", async () => {
       const brand = box.querySelector(".pmr-c-brand").value.trim();
       if (brand && card.brand.canonical !== brand) {
@@ -233,7 +266,16 @@
         if (key) await saveCorrection("brands", key, brand);
       }
       if (chosen && unknownWord) await saveCorrection("colours", unknownWord, chosen);
-      closeCorrect();
+      closeCorrect(true);
+    });
+    // Escape closes, and focus goes back where it came from. Without this a
+    // keyboard user who opens the popover is dropped into the page behind it
+    // with no way back to the card they were on.
+    correctOpener = tile.querySelector(".pmr-badge");
+    box.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      closeCorrect(true);
     });
     (tile.querySelector(SEL.media) || tile).appendChild(box);
     box.querySelector(".pmr-c-brand").focus();
@@ -559,6 +601,6 @@
   });
 
   chrome.storage.onChanged.addListener(async (changes) => {
-    if (changes.refine) { await loadSettings(); apply(); }
+    if (changes.refine || changes.fitLedger) { await loadSettings(); apply(); }
   });
 })();

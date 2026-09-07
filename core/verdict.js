@@ -21,6 +21,8 @@ import {
  * Parse the text fields of one result card into attributes with confidence.
  * `fields` mirrors the card selectors in the fixture: { title, size, condition }.
  */
+import { sizesWithFit, explainFit } from "./fit.js";
+
 export function parseCard(fields, category = "tops", corrections = null) {
   const title = String(fields.title || "").trim();
   // The shopper's corrections extend the shipped tables; they never replace the
@@ -49,14 +51,23 @@ export function parseCard(fields, category = "tops", corrections = null) {
  * `brands` / `colours` are optional arrays of canonical names; null = no
  * constraint on that attribute.
  */
-export function intentFor(profiles, who, category, { brands = null, colours = null, colourTerms = null, maxPrice = null, conditions = null } = {}) {
+export function intentFor(profiles, who, category, { brands = null, colours = null, colourTerms = null, maxPrice = null, conditions = null, fitLedger = null } = {}) {
   const people = who === "anyone" ? Object.keys(profiles) : [who];
   const sizes = new Set();
+  // Who each size belongs to. The union used to throw this away, so shopping
+  // for the family produced a card marked "Match" that never said WHICH person
+  // it fits - leaving the shopper to work it out by eye, which is the manual
+  // filtering this whole tool exists to remove.
+  const owners = {};
   for (const p of people) {
-    for (const s of (profiles[p] && profiles[p][category]) || []) sizes.add(s);
+    for (const s of (profiles[p] && profiles[p][category]) || []) {
+      sizes.add(s);
+      (owners[s] = owners[s] || []).push(p);
+    }
   }
   return {
     sizes: sizes.size ? sizes : null,
+    owners,
     brands: brands && brands.length ? new Set(brands) : null,
     colours: colours && colours.length ? new Set(colours) : null,
     colourTerms: colourTerms && colourTerms.length ? colourTerms.filter(Boolean) : null,
@@ -64,6 +75,9 @@ export function intentFor(profiles, who, category, { brands = null, colours = nu
     conditions: conditions && conditions.length ? new Set(conditions) : null,
     who,
     category,
+    // Tier 4. Held on the intent but applied per-card in verdict(), because the
+    // adjustment depends on the card's brand, which is not known until we see it.
+    fitLedger: Array.isArray(fitLedger) && fitLedger.length ? fitLedger : null,
   };
 }
 
@@ -74,12 +88,53 @@ export function intentFor(profiles, who, category, { brands = null, colours = nu
 export function verdict(card, intent) {
   const reasons = [];
   const notes = [];
+  const fits = [];
   let unknown = false;
 
   if (intent.sizes) {
-    const results = [...intent.sizes].map((w) => sizeMatches(card.size, w, intent.category || card.category));
+    let wanted = [...intent.sizes];
+    // Per-card view of who wears what. Starts from the intent and may gain a
+    // learned size below; the intent itself is never touched.
+    const owners = Object.assign({}, intent.owners);
+    // Tier 4: what this shopper has learned about THIS brand. It only ever adds
+    // a size, and only on consistent evidence - see core/fit.js.
+    let fitAdded = null;
+    if (intent.fitLedger && card.brand && card.brand.canonical) {
+      // Shopping for the family, each person's own history applies: what fits
+      // one of them says nothing about the others, so they are widened
+      // separately rather than pooled.
+      const people = intent.who === "anyone"
+        ? [...new Set(Object.values(intent.owners || {}).flat())]
+        : [intent.who];
+      for (const person of people) {
+        const widened = sizesWithFit(wanted, intent.fitLedger, person, card.brand.canonical, intent.category);
+        if (!widened.added) continue;
+        wanted = widened.sizes;
+        fitAdded = widened.added;
+        // Record the new size's owner LOCALLY. intent is shared across every
+        // card on the page, so mutating it here would leak a size learned from
+        // one brand onto every card judged afterwards.
+        const list = owners[widened.added.size] = (owners[widened.added.size] || []).slice();
+        if (!list.includes(person)) list.push(person);
+      }
+    }
+    const results = wanted.map((w) => sizeMatches(card.size, w, intent.category || card.category));
+    // Which people the sizes that actually matched belong to. Order follows the
+    // profile order, not the size order, so a household reads the same way every
+    // time.
+    const matchedSizes = wanted.filter((w, i) => results[i] === "exact" || results[i] === "inferred");
+    for (const w of matchedSizes) {
+      for (const person of owners[w] || []) {
+        if (!fits.includes(person)) fits.push(person);
+      }
+    }
     if (results.includes("exact")) {
-      // fits
+      // fits. Say so when it was the LEARNED size that matched, not the stated
+      // one - a surfaced item the shopper did not ask for owes an explanation.
+      const i = wanted.findIndex((w, n) => results[n] === "exact");
+      if (fitAdded && i >= 0 && String(wanted[i]).toUpperCase() === fitAdded.size) {
+        notes.push(`${explainFit(fitAdded, card.brand.canonical)}, so this size is included`);
+      }
     } else if (results.includes("inferred")) {
       notes.push(`size ${card.size.raw} likely fits ${[...intent.sizes].join("/")} (numeric-to-letter is brand-dependent)`);
     } else if (results.every((r) => r === "unknown")) {
@@ -192,7 +247,7 @@ export function verdict(card, intent) {
     }
   }
 
-  return { state: unknown ? "dim" : "show", reasons, notes };
+  return { state: unknown ? "dim" : "show", reasons, notes, fits };
 }
 
 /** Sort order for the grid: shows first, then dims; hides are not rendered. */
