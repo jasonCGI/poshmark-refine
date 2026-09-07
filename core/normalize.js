@@ -163,6 +163,118 @@ export function normalizeBrand(title, aliases = BRAND_INDEX) {
   return { canonical: null, confidence: "unknown" };
 }
 
+/**
+ * Match a shopper's own colourway names.
+ *
+ * Brands name colours far more precisely than any family does: Vuori "Bay Blue",
+ * "Frost Grey", "Velvet Violet Heather". A family filter cannot separate Bay
+ * Blue from Navy, so the shopper can add the exact phrase instead.
+ *
+ * Matched as a whole PHRASE against the title and the listing body. Absence is
+ * never evidence against an item - colourway names are usually on the listing,
+ * not the card - so the caller dims on a miss and lets Tier-3 go looking.
+ * Returns the term that hit, or null.
+ */
+export function matchesColourTerm(text, terms) {
+  const hay = " " + String(text || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim() + " ";
+  for (const raw of terms || []) {
+    const term = String(raw || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
+    if (!term) continue;
+    if (hay.includes(" " + term + " ")) return term;
+  }
+  return null;
+}
+
+/**
+ * Candidate colourway names found in a listing's own words.
+ *
+ * There is no authoritative published list of a brand's current and former
+ * colourways, and inventing one would be confidently wrong. But sellers copy the
+ * brand's name straight into the title - "Vuori Sunday Pullover Hoodie Bay Blue"
+ * - so the vocabulary can be LEARNED from the listings the shopper already
+ * looks at, which is real data rather than a guess.
+ *
+ * The shape of a colourway name: one or two capitalised words in front of a
+ * colour word we already know ("Bay Blue", "Frost Grey", "Velvet Violet
+ * Heather"). Case matters, so this takes the ORIGINAL text, not a lowered copy.
+ */
+export function colourwayCandidates(raw) {
+  const colourWord = new Set(Object.values(COLOUR_FAMILIES).flat().filter((w) => /^[a-z]+$/.test(w)));
+  const brandWord = new Set(Object.values(BRAND_ALIASES).flat().map((b) => b.split(" ")[0].toLowerCase()));
+  const words = String(raw || "").split(/[^A-Za-z]+/).filter(Boolean);
+  const cap = (w) => /^[A-Z][a-z]+$/.test(w);
+  const out = new Set();
+
+  for (let i = 0; i < words.length; i++) {
+    if (!cap(words[i]) || !colourWord.has(words[i].toLowerCase())) continue;
+    // the maximal run of consecutive capitalised COLOUR words starting here
+    let j = i;
+    while (j + 1 < words.length && cap(words[j + 1]) && colourWord.has(words[j + 1].toLowerCase())) j++;
+    const run = words.slice(i, j + 1);
+    // (a) the colour run itself, when it is already a compound ("Charcoal Heather")
+    if (run.length >= 2) out.add(run.join(" "));
+    // (b) one capitalised word in front of it ("Bay" + "Blue"), which is the
+    // usual shape - but not a brand, or we would learn "Rails Sage".
+    const prev = words[i - 1];
+    if (prev && cap(prev) && !colourWord.has(prev.toLowerCase()) && !brandWord.has(prev.toLowerCase())) {
+      out.add([prev, ...run].join(" "));
+    }
+    i = j;
+  }
+  return [...out].filter((p) => p.split(" ").length >= 2);
+}
+
+/**
+ * A size STATED IN PROSE, from a listing's description.
+ *
+ * The card's size field and the listing's structured size are the same value,
+ * so when a card shows nothing the listing has nothing structured to add. What
+ * it does have is the seller's description: "Size tag is missing. Similar
+ * garments with the same measurements are Size XL". That is an estimate, not a
+ * tag, so the result is marked confidence:"described" and callers must treat it
+ * as weaker than an exact size - good enough to surface a likely match, never
+ * good enough to discard an item.
+ *
+ * Only a LABELLED size counts ("size XL", "marked M", "fits like a medium"). A
+ * bare letter loose in prose is not a size statement.
+ */
+export function sizeFromText(raw, category = "tops") {
+  const t = " " + String(raw || "").toLowerCase().replace(/[^\p{L}\p{N}./ ]+/gu, " ").replace(/\s+/g, " ") + " ";
+  const tok = "(xxs|xs|xl|xxl|1x|2x|3x|small|medium|large|s|m|l|\\d{1,2}(?:\\.5)?)";
+  const re = new RegExp("\\b(?:size|sz|marked|tagged|labelled|labeled|fits like an?|fits)\\s+" + tok + "\\b");
+  const m = t.match(re);
+  if (!m) return null;
+  const n = normalizeSize(m[1], category);
+  if (n.confidence !== "exact") return null;
+  return { ...n, confidence: "described", raw: m[0].trim() };
+}
+
+// --------------------------------------------------------------- price --------
+
+/**
+ * Price from a card's price text. "$48", "$1,299", "48" -> 48. Returns null for
+ * anything unreadable, which is UNKNOWN, never 0.
+ */
+export function parsePrice(raw) {
+  const m = String(raw || "").replace(/,/g, "").match(/\$?\s*(\d+(?:\.\d{1,2})?)/);
+  return m ? Number(m[1]) : null;
+}
+
+// ----------------------------------------------------------- condition --------
+
+/**
+ * Poshmark badges "NWT" (new with tags) explicitly and shows nothing for a used
+ * item, so an EMPTY condition element is real information: not-new. A MISSING
+ * element is different - that is unknown, and the caller says so via
+ * `conditionKnown`.
+ */
+export function normalizeCondition(raw) {
+  const t = String(raw || "").toLowerCase();
+  if (/\bnwt\b|new with tags/.test(t)) return "nwt";
+  if (/\bnwot\b|new without tags/.test(t)) return "nwot";
+  return "used";
+}
+
 // -------------------------------------------------------------- colour --------
 
 /**

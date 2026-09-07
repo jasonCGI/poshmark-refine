@@ -3,7 +3,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { normalizeSize, sizeMatches, normalizeBrand, coloursFromTitle, CATEGORY_SIZES, CATEGORIES } from "../core/normalize.js";
+import {
+  normalizeSize, sizeMatches, normalizeBrand, coloursFromTitle,
+  CATEGORY_SIZES, CATEGORIES, parsePrice, normalizeCondition, sizeFromText,
+  matchesColourTerm, colourwayCandidates,
+} from "../core/normalize.js";
 import { parseCard, intentFor, verdict } from "../core/verdict.js";
 
 const fx = JSON.parse(readFileSync(new URL("../fixtures/tops-blouse-2026-09-05.json", import.meta.url), "utf8"));
@@ -160,6 +164,130 @@ test("garment categories still infer US numeric to letters", () => {
 
 test("every category offers quick-pick sizes", () => {
   for (const c of CATEGORIES) assert.ok((CATEGORY_SIZES[c] || []).length > 0, c + " has no sizes");
+});
+
+// ------------------------------------------------- price and condition -------
+test("price parses out of the card text, and unreadable is null not zero", () => {
+  assert.equal(parsePrice("$48"), 48);
+  assert.equal(parsePrice("$1,299"), 1299);
+  assert.equal(parsePrice("$24.50"), 24.5);
+  assert.equal(parsePrice(""), null);
+  assert.equal(parsePrice("Free People"), null);
+});
+
+test("an empty condition badge means not-new; a missing one means unknown", () => {
+  assert.equal(normalizeCondition("NWT"), "nwt");
+  assert.equal(normalizeCondition("New With Tags"), "nwt");
+  assert.equal(normalizeCondition(""), "used");
+  // the distinction lives on the card: conditionKnown false = element absent
+  assert.equal(parseCard({ title: "x", condition: "" }).conditionKnown, true);
+  assert.equal(parseCard({ title: "x", conditionKnown: false }).conditionKnown, false);
+});
+
+test("over-budget HIDES with the price named; no price DIMS", () => {
+  const i = intentFor({ me: { tops: [] } }, "me", "tops", { maxPrice: 50 });
+  const over = verdict(parseCard({ title: "Rails Top", price: "$78" }), i);
+  assert.equal(over.state, "hide");
+  assert.equal(over.cause, "price");
+  assert.match(over.reasons.join(" "), /\$78.*\$50/);
+  assert.equal(verdict(parseCard({ title: "Rails Top", price: "$40" }), i).state, "show");
+  assert.equal(verdict(parseCard({ title: "Rails Top", price: "" }), i).state, "dim");
+});
+
+test("NWT-only hides a used item but only DIMS when the badge is absent", () => {
+  const i = intentFor({ me: { tops: [] } }, "me", "tops", { conditions: ["nwt"] });
+  assert.equal(verdict(parseCard({ title: "Top", condition: "NWT" }), i).state, "show");
+  const used = verdict(parseCard({ title: "Top", condition: "" }), i);
+  assert.equal(used.state, "hide");
+  assert.equal(used.cause, "condition");
+  // element missing entirely: unknown, so it must not be discarded
+  assert.equal(verdict(parseCard({ title: "Top", conditionKnown: false }), i).state, "dim");
+});
+
+test("every hide names the constraint that caused it, for the zero-match summary", () => {
+  const i = intentFor({ me: { tops: ["S"] } }, "me", "tops", { brands: ["Rails"], colours: ["blue"], maxPrice: 50 });
+  assert.equal(verdict(parseCard({ title: "Rails Blue Top", size: "L" }), i).cause, "size");
+  assert.equal(verdict(parseCard({ title: "Zara Blue Top", size: "S" }), i).cause, "brand");
+  assert.equal(verdict(parseCard({ title: "Rails Red Top", size: "S" }), i).cause, "colour");
+  assert.equal(verdict(parseCard({ title: "Rails Blue Top", size: "S", price: "$99" }), i).cause, "price");
+});
+
+// ----------------------------------------- size described in the body --------
+test("only a LABELLED size counts as a described size", () => {
+  assert.equal(sizeFromText("Size XL chest 17in").canonical, "XL");
+  assert.equal(sizeFromText("marked M").canonical, "M");
+  assert.equal(sizeFromText("fits like a medium").canonical, "M");
+  // a bare letter in prose is not a size statement
+  assert.equal(sizeFromText("Lovely top, L shaped neckline"), null);
+  assert.equal(sizeFromText("great condition"), null);
+});
+
+test("the real Vuori listing: size only in prose, and hedged", () => {
+  // verbatim from poshmark.com/listing/VuoriSunrise-Crop-Ribbed-Tank-Top-...
+  const desc = "Great Pre Owned Condition Vuori Sunrise Crop Ribbed Tank Top Size tag is " +
+    "missing. Similar garments with the same measurements are Size XL chest measurement " +
+    "pit to pit 17in length";
+  const d = sizeFromText(desc);
+  assert.equal(d.canonical, "XL");
+  assert.equal(d.confidence, "described", "never 'exact' - it is the seller's estimate");
+});
+
+test("a described size SURFACES a likely match but never discards an item", () => {
+  const wantXL = intentFor({ me: { tops: ["XL"] } }, "me", "tops");
+  const wantS = intentFor({ me: { tops: ["S"] } }, "me", "tops");
+  const described = sizeFromText("Size tag is missing. Similar garments are Size XL");
+
+  // card has NO readable size; the body says XL and the shopper wants XL
+  const card = parseCard({ title: "Vuori Tank", size: "" });
+  card.describedSize = described;
+  const match = verdict(card, wantXL);
+  assert.equal(match.state, "show");
+  assert.match(match.notes.join(" "), /listing body says size XL/);
+  assert.match(match.notes.join(" "), /not a tag/, "the hedge must be visible to the shopper");
+
+  // same card, shopper wants S: the body disagrees, but a hedged guess must not
+  // hide it - it stays dimmed with the reason spelled out
+  const card2 = parseCard({ title: "Vuori Tank", size: "" });
+  card2.describedSize = described;
+  const clash = verdict(card2, wantS);
+  assert.equal(clash.state, "dim", "never hide on the seller's estimate");
+  assert.match(clash.reasons.join(" "), /kept for you to judge/);
+});
+
+// ------------------------------------------------------- colourways ---------
+test("a colourway is matched as a whole phrase, in title or listing body", () => {
+  assert.equal(matchesColourTerm("Vuori Sunday Hoodie Bay Blue", ["bay blue"]), "bay blue");
+  assert.equal(matchesColourTerm("Color: Frost Grey", ["Frost Grey"]), "frost grey");
+  // a family word is not the colourway
+  assert.equal(matchesColourTerm("Navy Blue Hoodie", ["bay blue"]), null);
+  assert.equal(matchesColourTerm("", ["bay blue"]), null);
+});
+
+test("colourway names are LEARNED from listing text, not invented", () => {
+  // the three from the shopper's own screenshots
+  assert.deepEqual(colourwayCandidates("Vuori Sunday Pullover Hoodie Bay Blue"), ["Bay Blue"]);
+  assert.deepEqual(colourwayCandidates("Color: Frost Grey"), ["Frost Grey"]);
+  assert.ok(colourwayCandidates("Elevation Square Neck Cami Velvet Violet Heather")
+    .includes("Velvet Violet Heather"));
+  // prose is not a colourway, and a brand must not be learned as one
+  assert.deepEqual(colourwayCandidates("a light blue top in great condition"), []);
+  assert.deepEqual(colourwayCandidates("Rails Sage Ruffle Top"), []);
+});
+
+test("a missing colourway DIMS - it is usually on the listing, not the card", () => {
+  const i = intentFor({ me: { tops: [] } }, "me", "tops", { colourTerms: ["Bay Blue"] });
+  const named = verdict(parseCard({ title: "Vuori Sunday Hoodie Bay Blue" }), i);
+  assert.equal(named.state, "show");
+  assert.match(named.notes.join(" "), /colourway "bay blue"/);
+
+  const silent = verdict(parseCard({ title: "Vuori Sunday Hoodie" }), i);
+  assert.equal(silent.state, "dim", "never hide because the card omitted the name");
+  assert.match(silent.reasons.join(" "), /listing may say/);
+
+  // Tier-3 supplies the body, which names it
+  const withBody = parseCard({ title: "Vuori Sunday Hoodie" });
+  withBody.bodyText = "Color: Bay Blue. Great condition.";
+  assert.equal(verdict(withBody, i).state, "show");
 });
 
 // ---------------------------------------------------------- verdict ----------

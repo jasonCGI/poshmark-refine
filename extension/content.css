@@ -89,6 +89,7 @@ body.pmr-reveal .tile-grid-redesign.pmr-hide { display: block; opacity: .34; fil
 #pmr-hud .pmr-c-hide .pmr-hud-dot { background: var(--pmr-off); }
 #pmr-hud .pmr-hud-stat { color: var(--pmr-muted); white-space: nowrap; }
 #pmr-hud .pmr-hud-stat b { color: var(--pmr-ink); font-weight: 700; }
+#pmr-hud .pmr-hud-why { color: var(--pmr-off); white-space: nowrap; font-weight: 600; }
 #pmr-hud .pmr-hud-sep { width: 1px; height: 16px; background: var(--pmr-line); }
 #pmr-hud button {
   font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;

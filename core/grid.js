@@ -123,6 +123,30 @@ export function countStates(grids, SEL) {
   return counts;
 }
 
+/**
+ * Why cards were hidden, tallied by the constraint that did it.
+ *
+ * A zero-match search is the moment the shopper most needs an explanation, and
+ * "0 matched" alone gives them nothing to act on. judge() records the cause on
+ * each hidden tile; this counts them so the HUD can say which constraint did
+ * the damage.
+ */
+export function countCauses(grids, SEL) {
+  const causes = {};
+  for (const grid of grids) {
+    for (const t of grid.querySelectorAll(SEL.tile)) {
+      const c = t.dataset.pmrCause;
+      if (c) causes[c] = (causes[c] || 0) + 1;
+    }
+  }
+  return causes;
+}
+
+/** The biggest culprits first, as [cause, n] pairs. */
+export function topCauses(grids, SEL, limit = 2) {
+  return Object.entries(countCauses(grids, SEL)).sort((a, b) => b[1] - a[1]).slice(0, limit);
+}
+
 /** Total tiles across all grids - zero on a results page means selector drift. */
 export function countTiles(grids, SEL) {
   let n = 0;

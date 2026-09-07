@@ -10,7 +10,7 @@
 (async () => {
   const core = await import(chrome.runtime.getURL("core/verdict.js"));
   const { parseCard, intentFor, verdict, STATE_ORDER } = core;
-  const { coloursFromTitle } = await import(chrome.runtime.getURL("core/normalize.js"));
+  const { coloursFromTitle, sizeFromText, colourwayCandidates } = await import(chrome.runtime.getURL("core/normalize.js"));
   const G = await import(chrome.runtime.getURL("core/grid.js"));
 
   const SEL = {
@@ -19,6 +19,7 @@
     size: ".tile-grid-redesign__size",
     condition: ".tile-grid-redesign__condition-wrap",
     media: ".tile-grid-redesign__media--wrapper",
+    price: ".tile-grid-redesign__price-current",
     link: "a.tile-grid-redesign__meta-link, a.tile__covershot",
   };
 
@@ -28,12 +29,40 @@
     category: "tops",
     brands: [],
     colours: [],
+    colourTerms: [],
+    maxPrice: null,
+    conditions: [],
     hideMode: "fade",        // 'fade' | 'hide'
     tier3: true,             // hover read of the listing page for colour
   };
 
   let settings = DEFAULTS;
   const colourCache = new Map();   // listing path -> Set of colour families (this tab only)
+  const sizeCache = new Map();     // listing path -> size described in the body
+  const bodyCache = new Map();     // listing path -> body text, for colourway terms
+
+  // Colourway vocabulary, LEARNED from the listings the shopper is already
+  // looking at. There is no published list of a brand's current and former
+  // colourways, so the alternative to learning would be inventing one. Harvested
+  // in memory and flushed to storage when the page goes quiet, where the popup
+  // and settings page offer them as autocomplete.
+  const learned = new Set();
+  let learnTimer = null;
+  const LEARN_CAP = 400;
+  function learn(fromText) {
+    for (const c of colourwayCandidates(fromText)) learned.add(c);
+    if (learnTimer) return;
+    learnTimer = setTimeout(flushLearned, 2500);
+  }
+  async function flushLearned() {
+    learnTimer = null;
+    if (!learned.size) return;
+    try {
+      const stored = (await chrome.storage.local.get("learnedColourways")).learnedColourways || [];
+      const merged = [...new Set([...stored, ...learned])].sort().slice(0, LEARN_CAP);
+      if (merged.length !== stored.length) await chrome.storage.local.set({ learnedColourways: merged });
+    } catch (e) { /* settings are a convenience, never break the page for them */ }
+  }
   let inflight = null;             // one Tier-3 request at a time
   // Our own DOM writes (badges, strips, re-ordering) must never retrigger the
   // MutationObserver - that is an infinite loop that freezes the tab. We pause
@@ -62,12 +91,16 @@
   const countStates = (grids) => G.countStates(grids, SEL);
   const countTiles = (grids) => G.countTiles(grids, SEL);
   const shouldReapply = (muts) => G.shouldReapply(muts, SEL);
+  const topCauses = (grids) => G.topCauses(grids, SEL);
 
 
   function currentIntent() {
     return intentFor(settings.profiles, settings.who, settings.category, {
       brands: settings.brands,
       colours: settings.colours,
+      colourTerms: settings.colourTerms,
+      maxPrice: Number(settings.maxPrice) || null,
+      conditions: settings.conditions,
     });
   }
 
@@ -111,18 +144,31 @@
     // deliberately skip cannot spin them forever.
     tile.dataset.pmrSeen = "1";
     tile.dataset.pmrSig = signatureOf(tile);
-    const fields = { title: text(tile, SEL.title), size: text(tile, SEL.size), condition: text(tile, SEL.condition) };
+    const fields = {
+      title: text(tile, SEL.title),
+      size: text(tile, SEL.size),
+      price: text(tile, SEL.price),
+      condition: text(tile, SEL.condition),
+      // an ABSENT condition element is unknown; an empty one means "not new"
+      conditionKnown: !!tile.querySelector(SEL.condition),
+    };
     if (!fields.title) return;
+    learn(fields.title);
     const card = parseCard(fields, settings.category);
     const link = tile.querySelector(SEL.link);
     const path = link ? (link.getAttribute("href") || "").split("?")[0] : "";
     if (path && colourCache.has(path)) {
       for (const c of colourCache.get(path)) card.colours.add(c);
     }
+    if (path && sizeCache.get(path)) card.describedSize = sizeCache.get(path);
+    if (path && bodyCache.has(path)) card.bodyText = bodyCache.get(path);
     const v = verdict(card, currentIntent());
     decorate(tile, v);
     tile.dataset.pmrPath = path;
+    if (v.cause) tile.dataset.pmrCause = v.cause; else delete tile.dataset.pmrCause;
     tile.dataset.pmrColourUnknown = String(card.colours.size === 0 && !!settings.colours.length);
+    tile.dataset.pmrSizeUnknown = String(card.size.confidence === "unknown" && !!currentIntent().sizes);
+    tile.dataset.pmrTermUnknown = String(!!(settings.colourTerms || []).length && !card.bodyText);
   }
 
 
@@ -130,7 +176,10 @@
   // Tier 3: on hover, read the listing page under the pointer for its colour.
   // One request in flight at a time; cached per tab; never triggered by scroll.
   async function hoverRead(tile) {
-    if (!settings.tier3 || tile.dataset.pmrColourUnknown !== "true") return;
+    if (!settings.tier3) return;
+    if (tile.dataset.pmrColourUnknown !== "true"
+      && tile.dataset.pmrSizeUnknown !== "true"
+      && tile.dataset.pmrTermUnknown !== "true") return;
     const path = tile.dataset.pmrPath;
     if (!path || colourCache.has(path) || inflight) return;
     inflight = path;
@@ -148,8 +197,16 @@
       const desc = (doc.querySelector("[class*='description']") || {}).textContent || "";
       const found = coloursFromTitle(jsonColour + " " + detail + " " + desc);
       colourCache.set(path, found);
+      // The listing's structured size is the same value the card already shows,
+      // so when the card is blank the only new information is the prose.
+      sizeCache.set(path, sizeFromText(desc + " " + detail, settings.category));
+      // keep a slice of the body so a colourway phrase can be matched against it
+      bodyCache.set(path, (jsonColour + " " + desc).slice(0, 2000));
+      learn(jsonColour + " " + desc.slice(0, 600));
     } catch {
       colourCache.set(path, new Set());     // do not retry a failed read this tab
+      sizeCache.set(path, null);
+      bodyCache.set(path, "");
     } finally {
       inflight = null;
     }
@@ -237,7 +294,7 @@
 
   function updateHud(grids) {
     const intent = currentIntent();
-    const active = !!(intent.sizes || intent.brands || intent.colours);
+    const active = !!(intent.sizes || intent.brands || intent.colours || intent.colourTerms || intent.maxPrice || intent.conditions);
     const hud = ensureHud();
     hud.hidden = !active;
     if (!active) return;
@@ -246,6 +303,21 @@
       hud.querySelector('[data-pmr="' + k + '"]').textContent = String(counts[k]);
     }
     hud.querySelector(".pmr-hud-reveal").hidden = counts.hide === 0;
+    // A zero-match search needs a next action, not just a zero. Name the
+    // constraint that removed the most cards.
+    let why = hud.querySelector(".pmr-hud-why");
+    if (!why) {
+      why = document.createElement("span");
+      why.className = "pmr-hud-why";
+      hud.querySelector(".pmr-hud-body").appendChild(why);
+    }
+    if (counts.show === 0 && counts.hide > 0) {
+      const label = { size: "size", brand: "brand", colour: "colour", price: "price", condition: "condition" };
+      why.textContent = "- " + topCauses(grids).map(([c, n]) => (label[c] || c) + " removed " + n).join(", ");
+      why.hidden = false;
+    } else {
+      why.hidden = true;
+    }
   }
 
   function apply() {
@@ -311,7 +383,7 @@
     // Poshmark reskinned. Report it so the popup can say so instead of the
     // extension silently doing nothing.
     respond({
-      active: !!(intent.sizes || intent.brands || intent.colours),
+      active: !!(intent.sizes || intent.brands || intent.colours || intent.colourTerms || intent.maxPrice || intent.conditions),
       tiles: countTiles(grids),
       ...counts,
     });

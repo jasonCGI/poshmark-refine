@@ -84,6 +84,21 @@
     <h2>Colours</h2>
     <div id="colours" class="chips" role="group" aria-label="Colours"></div>
 
+    <h2>Colourways <span id="cwCount" class="sub"></span></h2>
+    <div id="cwChips" class="chips"></div>
+    <div class="searchrow" style="margin-top:7px">
+      <input id="cwInput" type="text" list="known-colourways" placeholder="Bay Blue, Frost Grey&hellip;" aria-label="Add a colourway">
+      <button id="cwAdd" class="btn" type="button">Add</button>
+    </div>
+    <datalist id="known-colourways"></datalist>
+    <p class="hint">Exact brand colour names. Learned from listings as you browse. A listing that does not name one is dimmed, never hidden.</p>
+
+    <h2>Price &amp; condition</h2>
+    <div class="searchrow">
+      <input id="maxPrice" type="text" inputmode="decimal" placeholder="Max $" aria-label="Maximum price">
+      <button id="nwt" class="chip" type="button" aria-pressed="false" style="flex:none">NWT only</button>
+    </div>
+
     <h2>Brands</h2>
     <input id="brands" type="text" list="known-brands" placeholder="Optional. Vuori, Rails...">
     <datalist id="known-brands"></datalist>
