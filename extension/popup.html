@@ -41,6 +41,9 @@
   .hint { font-size: 11.5px; color: var(--muted); margin: 7px 0 0; }
   .sub { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); }
   .chip[disabled] { opacity: .45; cursor: not-allowed; }
+  .searchrow { display: flex; gap: 6px; }
+  .searchrow input { flex: 1; }
+  .searchrow .btn { flex: none; }
   /* live status of the page under the popup */
   .pstatus { display: flex; align-items: center; gap: 8px; margin: 10px 14px 0; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; background: var(--card); border: 1px solid var(--line); color: var(--muted); }
   .pstatus b { color: var(--ink); }
@@ -58,6 +61,13 @@
   </header>
   <div class="pstatus" id="pagestatus"><span class="led"></span><span id="pstext">Checking this page&hellip;</span></div>
   <div class="body">
+    <h2>Search Poshmark</h2>
+    <div class="searchrow">
+      <input id="q" type="text" placeholder="vneck, blouse, joggers&hellip;" aria-label="Search terms">
+      <button id="go" class="btn" type="button">Search</button>
+    </div>
+    <select id="department" style="margin-top:8px" aria-label="Department"></select>
+
     <h2>Shopping for</h2>
     <select id="who"></select>
 

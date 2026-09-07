@@ -11,8 +11,14 @@ const DEFAULTS = {
   colours: [],
   hideMode: "fade",
   tier3: true,
+  query: "",
+  department: "Women",
 };
 const CATEGORIES = ["tops", "bottoms", "dresses", "outerwear"];
+const DEPARTMENTS = ["Women", "Men", "Kids", "All"];
+// Only categories whose Poshmark name we are sure of are sent as a facet; for
+// the rest we let the query do the work rather than risk an empty result page.
+const POSH_CATEGORY = { tops: "Tops", dresses: "Dresses" };
 const QUICK_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "1X", "2X", "3X"];
 const COLOUR_SWATCH = {
   black: "#1e1e1e", white: "#f2ede4", grey: "#9aa0a6", beige: "#d8c3a0",
@@ -125,12 +131,51 @@ function renderBrandsList() {
   for (const b of KNOWN_BRANDS) { const o = document.createElement("option"); o.value = b; dl.appendChild(o); }
 }
 
+function renderDepartment() {
+  const sel = $("department");
+  sel.innerHTML = "";
+  for (const d of DEPARTMENTS) {
+    const o = document.createElement("option");
+    o.value = d;
+    o.textContent = d === "All" ? "All departments" : d + "'s";
+    if (d === state.department) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
 function renderAll() {
+  renderDepartment();
   renderWho();
   renderCategory();
   renderSizes();
   renderColours();
+  $("q").value = state.query || "";
   $("brands").value = state.brands.join(", ");
+}
+
+/** Build the Poshmark search URL from the current criteria. */
+function searchUrl() {
+  const p = new URLSearchParams();
+  p.set("query", $("q").value.trim());
+  if (state.department && state.department !== "All") p.set("department", state.department);
+  const cat = POSH_CATEGORY[state.category];
+  if (cat) p.set("category", cat);
+  return "https://poshmark.com/search?" + p.toString();
+}
+
+/** Save first (so the page refines the moment it loads), then go. Reuse the
+ *  current tab when it is already Poshmark, otherwise open a new one. */
+async function runSearch() {
+  await save({ silent: true });
+  const url = searchUrl();
+  let tab;
+  try { [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); } catch (e) {}
+  if (tab && /^https:\/\/poshmark\.com\//.test(tab.url || "")) {
+    await chrome.tabs.update(tab.id, { url });
+  } else {
+    await chrome.tabs.create({ url });
+  }
+  window.close();
 }
 
 // ---- live status of the page under the popup -------------------------------
@@ -151,7 +196,7 @@ async function refreshStatus() {
   let tab;
   try { [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); } catch (e) {}
   if (!tab || !POSH_PAGE.test(tab.url || "")) {
-    setStatus("Open a Poshmark search to apply your filters.", false);
+    setStatus("Not on a Poshmark search. Hit <b>Search</b> above and I will open one.", false);
     return;
   }
   try {
@@ -171,7 +216,7 @@ $("who").addEventListener("change", () => { state.who = $("who").value; renderSi
 $("category").addEventListener("change", () => { state.category = $("category").value; renderSizes(); });
 $("sizesText").addEventListener("change", () => { setSizes(splitList($("sizesText").value)); renderSizes(); });
 
-$("save").addEventListener("click", async () => {
+async function save({ silent = false } = {}) {
   setSizes(splitList($("sizesText").value));            // catch an un-blurred edit
   const stored = (await chrome.storage.local.get("refine")).refine || {};
   const next = Object.assign({}, DEFAULTS, stored, {
@@ -180,13 +225,21 @@ $("save").addEventListener("click", async () => {
     category: state.category,
     colours: state.colours.map((c) => c.toLowerCase()),
     brands: splitList($("brands").value),
+    query: $("q").value.trim(),
+    department: state.department,
   });
   await chrome.storage.local.set({ refine: next });
   state = next;
+  if (silent) return;
   const s = $("status"); s.hidden = false;
   setTimeout(() => { s.hidden = true; }, 1400);
   setTimeout(refreshStatus, 350);
-});
+}
+
+$("save").addEventListener("click", () => save());
+$("go").addEventListener("click", runSearch);
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
+$("department").addEventListener("change", () => { state.department = $("department").value; });
 
 $("more").addEventListener("click", () => { chrome.runtime.openOptionsPage(); window.close(); });
 
