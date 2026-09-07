@@ -33,6 +33,11 @@
   let settings = DEFAULTS;
   const colourCache = new Map();   // listing path -> Set of colour families (this tab only)
   let inflight = null;             // one Tier-3 request at a time
+  // Our own DOM writes (badges, strips, re-ordering) must never retrigger the
+  // MutationObserver - that is an infinite loop that freezes the tab. We pause
+  // the observer while applying and ignore mutations we caused.
+  let mo = null;
+  let applying = false;
 
   async function loadSettings() {
     const stored = await chrome.storage.local.get("refine");
@@ -107,8 +112,14 @@
   function resort(grid) {
     const tiles = [...grid.querySelectorAll(SEL.tile)];
     const keyed = tiles.map((t, i) => [Number(t.dataset.pmrOrder || 0), i, wrapperOf(t, grid)]);
-    keyed.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    for (const [, , w] of keyed) grid.appendChild(w);
+    const sorted = keyed.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    // If the grid is already in this order, touch nothing. Re-appending an
+    // identical order still moves nodes, which destroys any text selection the
+    // shopper has made and generates pointless mutations.
+    let same = sorted.length === keyed.length;
+    for (let i = 0; same && i < sorted.length; i++) if (sorted[i] !== keyed[i]) same = false;
+    if (same) return;
+    for (const [, , w] of sorted) grid.appendChild(w);
   }
 
   // Tier 3: on hover, read the listing page under the pointer for its colour.
@@ -176,9 +187,11 @@
       const nt = Math.max(6, Math.min(window.innerHeight - hud.offsetHeight - 6, oy + (e.clientY - sy)));
       hud.style.left = nl + "px"; hud.style.top = nt + "px";
     });
-    const end = () => {
+    const end = (e) => {
       if (!dragging) return;
       dragging = false; hud.classList.remove("pmr-dragging");
+      // Always let the pointer go - a stuck capture swallows the page's clicks.
+      try { if (e && e.pointerId != null) handle.releasePointerCapture(e.pointerId); } catch (err) {}
       try { localStorage.setItem(HUD_POS_KEY, JSON.stringify({ left: parseInt(hud.style.left, 10), top: parseInt(hud.style.top, 10) })); } catch (e) {}
     };
     handle.addEventListener("pointerup", end);
@@ -243,24 +256,45 @@
   }
 
   function apply() {
+    if (applying) return;
     const grid = findGrid();
     if (!grid) return;
-    for (const tile of grid.querySelectorAll(SEL.tile)) judge(tile);
-    resort(grid);
-    updateHud(grid);
-    grid.dataset.pmrCount = String(grid.querySelectorAll(SEL.tile).length);
+    applying = true;
+    if (mo) mo.disconnect();          // our writes below must not feed back
+    try {
+      for (const tile of grid.querySelectorAll(SEL.tile)) judge(tile);
+      resort(grid);
+      updateHud(grid);
+      grid.dataset.pmrCount = String(grid.querySelectorAll(SEL.tile).length);
+    } finally {
+      if (mo) mo.observe(document.body, { childList: true, subtree: true });
+      applying = false;
+    }
   }
 
   await loadSettings();
   apply();
 
-  // Infinite scroll appends tiles; judge each as it arrives.
-  const mo = new MutationObserver((muts) => {
-    let touched = false;
-    for (const m of muts) for (const n of m.addedNodes) {
-      if (n.nodeType === 1 && (n.matches?.(SEL.tile) || n.querySelector?.(SEL.tile))) touched = true;
+  // Infinite scroll appends tiles; judge each as it arrives. React ONLY to tiles
+  // we have not judged yet (no data-pmr-order): a tile we merely re-ordered is
+  // not news, and treating it as news is an infinite apply -> resort -> observe
+  // loop that freezes the tab. Coalesce bursts into one pass per frame.
+  let queued = false;
+  mo = new MutationObserver((muts) => {
+    if (applying) return;
+    let fresh = false;
+    for (const m of muts) {
+      for (const n of m.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        const tiles = n.matches?.(SEL.tile) ? [n] : (n.querySelectorAll ? n.querySelectorAll(SEL.tile) : []);
+        for (const t of tiles) if (!t.dataset.pmrOrder) { fresh = true; break; }
+        if (fresh) break;
+      }
+      if (fresh) break;
     }
-    if (touched) apply();
+    if (!fresh || queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; apply(); });
   });
   mo.observe(document.body, { childList: true, subtree: true });
 
