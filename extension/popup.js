@@ -1,7 +1,7 @@
-// Popup: the quick controls (who, colours, brands) plus live status of the page
-// under the popup. Reads/writes the same chrome.storage.local `refine` record the
-// content script and the full settings page use - saving here merges into it, so
-// family profiles and behaviour set on the full page are never clobbered.
+// Popup: the quick controls - who, category, that person's sizes, colours,
+// brands - plus live status of the page under the popup. Reads/writes the same
+// chrome.storage.local `refine` record the content script and the full settings
+// page use; saving merges, so anything set on the full page survives.
 
 const DEFAULTS = {
   profiles: { me: { tops: [] } },
@@ -12,6 +12,8 @@ const DEFAULTS = {
   hideMode: "fade",
   tier3: true,
 };
+const CATEGORIES = ["tops", "bottoms", "dresses", "outerwear"];
+const QUICK_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "1X", "2X", "3X"];
 const COLOUR_SWATCH = {
   black: "#1e1e1e", white: "#f2ede4", grey: "#9aa0a6", beige: "#d8c3a0",
   brown: "#6f4a2f", red: "#b23b3b", orange: "#e0863a", yellow: "#e6c43f",
@@ -27,7 +29,25 @@ const POSH_PAGE = /^https:\/\/poshmark\.com\/(search|category|brand)/;
 
 const $ = (id) => document.getElementById(id);
 const splitList = (t) => String(t || "").split(",").map((s) => s.trim()).filter(Boolean);
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 let state = structuredClone(DEFAULTS);
+
+const isAnyone = () => state.who === "anyone";
+
+/** Sizes for the current who+category. For "anyone" this is the read-only union. */
+function currentSizes() {
+  if (isAnyone()) {
+    return [...new Set(Object.values(state.profiles).flatMap((p) => p[state.category] || []))];
+  }
+  const person = state.profiles[state.who] || (state.profiles[state.who] = {});
+  return person[state.category] || (person[state.category] = []);
+}
+
+function setSizes(list) {
+  if (isAnyone()) return;               // the union is not directly editable
+  const person = state.profiles[state.who] || (state.profiles[state.who] = {});
+  person[state.category] = list;
+}
 
 function renderWho() {
   const sel = $("who");
@@ -39,9 +59,46 @@ function renderWho() {
     if (name === state.who) o.selected = true;
     sel.appendChild(o);
   }
-  const sizes = state.who === "anyone"
-    ? [...new Set(Object.values(state.profiles).flatMap((p) => p[state.category] || []))]
-    : ((state.profiles[state.who] || {})[state.category] || []);
+}
+
+function renderCategory() {
+  const sel = $("category");
+  const known = [...new Set([...CATEGORIES, ...Object.values(state.profiles).flatMap((p) => Object.keys(p))])];
+  sel.innerHTML = "";
+  for (const c of known) {
+    const o = document.createElement("option");
+    o.value = c; o.textContent = cap(c);
+    if (c === state.category) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+function renderSizes() {
+  const sizes = currentSizes();
+  const host = $("sizes");
+  host.innerHTML = "";
+  for (const s of QUICK_SIZES) {
+    const on = sizes.some((x) => x.toLowerCase() === s.toLowerCase());
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = s;
+    b.setAttribute("aria-pressed", String(on));
+    b.disabled = isAnyone();
+    b.addEventListener("click", () => {
+      const cur = currentSizes().slice();
+      const i = cur.findIndex((x) => x.toLowerCase() === s.toLowerCase());
+      if (i >= 0) cur.splice(i, 1); else cur.push(s);
+      setSizes(cur);
+      renderSizes();
+    });
+    host.appendChild(b);
+  }
+  const text = $("sizesText");
+  text.value = sizes.join(", ");
+  text.disabled = isAnyone();
+  $("sizeHint").hidden = !isAnyone();
+  $("sizeFor").textContent = isAnyone()
+    ? "(everyone, read only)"
+    : "for " + state.who;
   $("whoLabel").textContent = sizes.length ? state.category + " " + sizes.join("/") : "no sizes set";
 }
 
@@ -52,7 +109,7 @@ function renderColours() {
     const on = state.colours.includes(fam);
     const b = document.createElement("button");
     b.type = "button"; b.className = "chip"; b.setAttribute("aria-pressed", String(on));
-    b.innerHTML = '<span class="sw" style="background:' + sw + '"></span>' + fam.charAt(0).toUpperCase() + fam.slice(1);
+    b.innerHTML = '<span class="sw" style="background:' + sw + '"></span>' + cap(fam);
     b.addEventListener("click", () => {
       const i = state.colours.indexOf(fam);
       if (i >= 0) state.colours.splice(i, 1); else state.colours.push(fam);
@@ -70,6 +127,8 @@ function renderBrandsList() {
 
 function renderAll() {
   renderWho();
+  renderCategory();
+  renderSizes();
   renderColours();
   $("brands").value = state.brands.join(", ");
 }
@@ -103,19 +162,22 @@ async function refreshStatus() {
       setStatus("On this page, but nothing to filter by yet. Set a size, brand or colour and Save.", false);
     }
   } catch (e) {
-    // No content script in this tab - it was open before the extension loaded.
     setStatus("Refresh this page once to start filtering.", false, true, tab.id);
   }
 }
 
 // ---- events ------------------------------------------------------------------
-$("who").addEventListener("change", () => { state.who = $("who").value; renderWho(); });
+$("who").addEventListener("change", () => { state.who = $("who").value; renderSizes(); });
+$("category").addEventListener("change", () => { state.category = $("category").value; renderSizes(); });
+$("sizesText").addEventListener("change", () => { setSizes(splitList($("sizesText").value)); renderSizes(); });
 
 $("save").addEventListener("click", async () => {
-  // merge into the stored record so profiles/behaviour from the full page survive
+  setSizes(splitList($("sizesText").value));            // catch an un-blurred edit
   const stored = (await chrome.storage.local.get("refine")).refine || {};
   const next = Object.assign({}, DEFAULTS, stored, {
+    profiles: state.profiles,
     who: state.who,
+    category: state.category,
     colours: state.colours.map((c) => c.toLowerCase()),
     brands: splitList($("brands").value),
   });
@@ -123,7 +185,7 @@ $("save").addEventListener("click", async () => {
   state = next;
   const s = $("status"); s.hidden = false;
   setTimeout(() => { s.hidden = true; }, 1400);
-  setTimeout(refreshStatus, 350);   // the page re-applies on the storage change
+  setTimeout(refreshStatus, 350);
 });
 
 $("more").addEventListener("click", () => { chrome.runtime.openOptionsPage(); window.close(); });
@@ -133,6 +195,7 @@ $("more").addEventListener("click", () => { chrome.runtime.openOptionsPage(); wi
   const stored = await chrome.storage.local.get("refine");
   state = Object.assign(structuredClone(DEFAULTS), stored.refine || {});
   if (!Array.isArray(state.colours)) state.colours = [];
+  if (!state.profiles || typeof state.profiles !== "object") state.profiles = structuredClone(DEFAULTS.profiles);
   renderAll();
   refreshStatus();
 })();
