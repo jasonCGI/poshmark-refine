@@ -98,7 +98,7 @@ export function verdict(card, intent) {
     const owners = Object.assign({}, intent.owners);
     // Tier 4: what this shopper has learned about THIS brand. It only ever adds
     // a size, and only on consistent evidence - see core/fit.js.
-    let fitAdded = null;
+    const fitBySize = new Map();
     if (intent.fitLedger && card.brand && card.brand.canonical) {
       // Shopping for the family, each person's own history applies: what fits
       // one of them says nothing about the others, so they are widened
@@ -108,13 +108,19 @@ export function verdict(card, intent) {
         : [intent.who];
       for (const person of people) {
         const widened = sizesWithFit(wanted, intent.fitLedger, person, card.brand.canonical, intent.category);
-        if (!widened.added) continue;
+        // Note the lesson even when the size was ALREADY in the set - another
+        // person may have contributed it, and it is still this person's
+        // evidence. Skipping here made a match name the wrong household member.
+        if (!widened.learned) continue;
         wanted = widened.sizes;
-        fitAdded = widened.added;
-        // Record the new size's owner LOCALLY. intent is shared across every
-        // card on the page, so mutating it here would leak a size learned from
-        // one brand onto every card judged afterwards.
-        const list = owners[widened.added.size] = (owners[widened.added.size] || []).slice();
+        // Keyed by size, not a single slot: one `fitAdded` was overwritten by
+        // the next person in the loop, so the first person's explanation was
+        // lost from the card.
+        fitBySize.set(widened.learned.size, widened.learned);
+        // Record the owner LOCALLY. intent is shared across every card on the
+        // page, so mutating it would leak one card's lesson onto every card
+        // judged afterwards.
+        const list = owners[widened.learned.size] = (owners[widened.learned.size] || []).slice();
         if (!list.includes(person)) list.push(person);
       }
     }
@@ -132,8 +138,10 @@ export function verdict(card, intent) {
       // fits. Say so when it was the LEARNED size that matched, not the stated
       // one - a surfaced item the shopper did not ask for owes an explanation.
       const i = wanted.findIndex((w, n) => results[n] === "exact");
-      if (fitAdded && i >= 0 && String(wanted[i]).toUpperCase() === fitAdded.size) {
-        notes.push(`${explainFit(fitAdded, card.brand.canonical)}, so this size is included`);
+      const lesson = i >= 0 ? fitBySize.get(String(wanted[i]).toUpperCase()) : null;
+      // Explain only when the shopper did not ask for this size themselves.
+      if (lesson && !(intent.sizes && [...intent.sizes].some((s) => String(s).toUpperCase() === lesson.size))) {
+        notes.push(`${explainFit(lesson, card.brand.canonical)}, so this size is included`);
       }
     } else if (results.includes("inferred")) {
       notes.push(`size ${card.size.raw} likely fits ${[...intent.sizes].join("/")} (numeric-to-letter is brand-dependent)`);

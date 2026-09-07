@@ -4,8 +4,8 @@
 // reads. A person holds sizes for SEVERAL categories at once, because a top, a
 // pair of jeans and a shoe are measured in different systems.
 import { CATEGORY_SIZES, CATEGORIES, COLOUR_FAMILIES, BRAND_ALIASES } from "../core/normalize.js";
-import { hostKey, BRAND_SITES } from "../core/brand.js";
-import { recordFit, learnedSize, forgetFit, explainFit, MIN_EVIDENCE } from "../core/fit.js";
+import { hostKey, BRAND_SITES, pruneBuiltIns } from "../core/brand.js";
+import { recordFit, learnedSize, forgetFit, explainFit, MIN_EVIDENCE, migrateLedger } from "../core/fit.js";
 
 const DEFAULTS = {
   profiles: { me: {} },
@@ -208,6 +208,9 @@ function renderAll() {
   renderHideMode();
   $("brands").value = state.brands.join(", ");
   $("tier3").checked = !!state.tier3;
+  // Fit memory's person picker is built FROM the profiles, so it has to be
+  // rebuilt whenever they are - on first load, and after any rename or removal.
+  renderFit();
 }
 
 /** Apply only the rows this page edited onto the stored profiles. A structural
@@ -228,7 +231,12 @@ function mergeProfiles(storedProfiles) {
 // Another surface (the popup) changed the record: adopt it, unless this page has
 // unsaved edits, which adopting would silently discard.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !changes.refine || !isClean()) return;
+  if (area !== "local") return;
+  // The fit ledger is its own key and has no unsaved-edit state to protect, so
+  // another settings page adding or forgetting an outcome is adopted at once.
+  // Without this the list could be rendered from a ledger that no longer exists.
+  if (changes.fitLedger) renderFit();
+  if (!changes.refine || !isClean()) return;
   state = Object.assign(structuredClone(DEFAULTS), changes.refine.newValue || {});
   if (!Array.isArray(state.colours)) state.colours = [];
   if (!state.profiles || !Object.keys(state.profiles).length) state.profiles = structuredClone(DEFAULTS.profiles);
@@ -276,6 +284,8 @@ $("save").addEventListener("click", async () => {
 
 (async () => {
   renderBrandsList();
+  await migrateLedgerOnce();
+  await pruneBuiltInSitesOnce();
   const stored = await chrome.storage.local.get("refine");
   state = Object.assign(structuredClone(DEFAULTS), stored.refine || {});
   if (!Array.isArray(state.colours)) state.colours = [];
@@ -383,6 +393,33 @@ const getLedger = async () => {
   try { return (await chrome.storage.local.get("fitLedger")).fitLedger || []; } catch (e) { return []; }
 };
 
+/**
+ * Bring a ledger written before ids and canonical brands existed up to date,
+ * once, in place. Entries recorded as "Levis" were invisible to every verdict,
+ * which looks up "Levi's"; they would have stayed invisible forever.
+ */
+/**
+ * Drop stored entries for hosts we now ship built-in. Someone who added Vuori
+ * before that was refused still has the entry, and it both downgraded the
+ * built-in brand mapping and registered a duplicate content script.
+ */
+async function pruneBuiltInSitesOnce() {
+  const before = await getSites();
+  const after = pruneBuiltIns(before);
+  if (Object.keys(after).length !== Object.keys(before).length) {
+    try { await chrome.storage.local.set({ brandSites: after }); } catch (e) {}
+  }
+}
+
+async function migrateLedgerOnce() {
+  const before = await getLedger();
+  if (!before.length) return;
+  const after = migrateLedger(before);
+  if (JSON.stringify(after) !== JSON.stringify(before)) {
+    try { await chrome.storage.local.set({ fitLedger: after }); } catch (e) {}
+  }
+}
+
 function fitMsg(text, bad) {
   const el = $("fitMsg");
   el.textContent = text || "";
@@ -392,8 +429,9 @@ function fitMsg(text, bad) {
 function fillFitPickers() {
   const who = $("fitPerson"), cat = $("fitCategory");
   const keepWho = who.value, keepCat = cat.value;
+  const people = Object.keys(state.profiles || {});
   who.innerHTML = "";
-  for (const name of Object.keys(state.profiles || {})) {
+  for (const name of people) {
     const o = document.createElement("option");
     o.value = name; o.textContent = name;
     who.appendChild(o);
@@ -405,7 +443,10 @@ function fillFitPickers() {
       cat.appendChild(o);
     }
   }
-  if (keepWho) who.value = keepWho;
+  // Keep the selection only if that person still exists. Preserving a name that
+  // has been renamed or deleted left the picker blank while claiming a value,
+  // and an outcome was then filed against a profile nobody had.
+  who.value = people.includes(keepWho) ? keepWho : (people[0] || "");
   if (keepCat) cat.value = keepCat;
 }
 
@@ -440,7 +481,7 @@ async function renderFit() {
     x.title = "Forget this outcome";
     x.textContent = "×";
     x.addEventListener("click", async () => {
-      await chrome.storage.local.set({ fitLedger: forgetFit(await getLedger(), i) });
+      await chrome.storage.local.set({ fitLedger: forgetFit(await getLedger(), e.id) });
       fitMsg("Forgotten.");
       renderFit();
     });
@@ -464,4 +505,6 @@ async function addFit(fits) {
 
 $("fitYes").addEventListener("click", () => addFit(true));
 $("fitNo").addEventListener("click", () => addFit(false));
-renderFit();
+// NOT called here. This module's tail runs before the async profile read
+// resolves, so the picker was built from DEFAULTS and offered a person the
+// shopper does not have. renderAll() drives it instead, after profiles exist.

@@ -18,15 +18,45 @@
 //      adjustment is applied at all - a single return would otherwise rewrite
 //      a size profile that the shopper knows better than we do.
 
+import { normalizeBrand } from "./normalize.js";
+
 /** Minimum agreeing outcomes before a learned size is trusted enough to use. */
 export const MIN_EVIDENCE = 2;
 
-/** One recorded outcome. Everything is lower-cased for comparison but kept as typed for display. */
-export function fitEntry({ person, brand, category, size, fits, at = Date.now() }) {
+/**
+ * The brand as the rest of the library would name it.
+ *
+ * The outcome is typed into a free-text box, so "Levis" arrives where a card
+ * parses to "Levi's". Keying evidence on the raw text produced a lesson the
+ * settings page displayed and the verdict could never match, because verdicts
+ * look up the CANONICAL brand. Both sides now agree.
+ *
+ * A brand we do not recognise keeps what was typed, so an unknown label is
+ * still learnable - it just matches only itself.
+ */
+export function canonicalBrand(raw, aliases) {
+  const typed = String(raw || "").trim();
+  if (!typed) return "";
+  const known = aliases ? normalizeBrand(typed, aliases) : normalizeBrand(typed);
+  return known.canonical || typed;
+}
+
+/**
+ * One recorded outcome.
+ *
+ * `id` exists because the settings list used to delete BY ARRAY INDEX against a
+ * freshly read ledger. If anything removed an entry in between - another
+ * settings tab, another window - the click deleted whatever had shifted into
+ * that slot. Identity is stable; position is not.
+ */
+export function fitEntry({ person, brand, category, size, fits, at = Date.now(), id, aliases }) {
   if (!person || !brand || !category || !size) return null;
+  const canon = canonicalBrand(brand, aliases);
+  if (!canon) return null;
   return {
+    id: id || `${at.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     person: String(person),
-    brand: String(brand),
+    brand: canon,
     category: String(category),
     size: String(size).toUpperCase(),
     fits: !!fits,
@@ -34,7 +64,7 @@ export function fitEntry({ person, brand, category, size, fits, at = Date.now() 
   };
 }
 
-const key = (e) => [e.person, e.brand.toLowerCase(), e.category].join("|");
+const key = (e) => [e.person, String(e.brand).toLowerCase(), e.category].join("|");
 
 /**
  * Add an outcome. The ledger is a flat array so the shopper can see and delete
@@ -83,9 +113,13 @@ export function learnedSize(ledger, person, brand, category) {
 export function sizesWithFit(baseSizes, ledger, person, brand, category) {
   const base = [...(baseSizes || [])];
   const learned = learnedSize(ledger, person, brand, category);
-  if (!learned) return { sizes: base, added: null };
-  if (base.some((s) => String(s).toUpperCase() === learned.size)) return { sizes: base, added: null };
-  return { sizes: [...base, learned.size], added: learned };
+  if (!learned) return { sizes: base, added: null, learned: null };
+  const already = base.some((s) => String(s).toUpperCase() === learned.size);
+  // `added` says whether the SET grew. `learned` says what this person knows,
+  // and is returned either way: a size another household member already
+  // contributed is still this person's lesson, and dropping it here is how a
+  // match came to name the wrong person and lose its explanation.
+  return { sizes: already ? base : [...base, learned.size], added: already ? null : learned, learned };
 }
 
 /** Plain-language account of why a size was added, for the card and the settings page. */
@@ -94,8 +128,23 @@ export function explainFit(learned, brand) {
   return `${learned.size} in ${brand} fitted ${learned.fitted} ${learned.fitted === 1 ? "time" : "times"}`;
 }
 
-/** Drop one entry by index, for the settings list. */
-export function forgetFit(ledger, index) {
+/**
+ * Drop one outcome BY IDENTITY, for the settings list.
+ *
+ * Never by index: the list the shopper clicked may be a render older than the
+ * ledger they are deleting from.
+ */
+export function forgetFit(ledger, id) {
   const l = Array.isArray(ledger) ? ledger : [];
-  return l.filter((_, i) => i !== index);
+  if (!id) return l;
+  return l.filter((e) => e.id !== id);
+}
+
+/**
+ * Bring an older ledger up to date: give entries an id, and canonicalise brands
+ * recorded before both existed. Idempotent.
+ */
+export function migrateLedger(ledger, aliases) {
+  if (!Array.isArray(ledger)) return [];
+  return ledger.map((e) => fitEntry({ ...e, aliases })).filter(Boolean);
 }

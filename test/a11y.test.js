@@ -118,3 +118,43 @@ test("the update bar offers an action, not just a way to hide it", () => {
   assert.match(html, /id="updismiss"[^>]*aria-label=/, "the dismiss control needs an accessible name");
   assert.match(html, /id="upbar" role="status"/, "the bar appears after load, so it has to announce itself");
 });
+
+// --- Codex review 2026-09-08, accessibility findings ----------------------
+
+test("F8: the focus ring is not painted in the colour behind it", () => {
+  // The dark override set outline-color to --pmr-paper, which is also the
+  // correction popover's background: a 3px ring at 1:1 contrast.
+  const dark = CSS.match(/@media \(prefers-color-scheme: dark\)[\s\S]*?\n\}/g) || [];
+  for (const block of dark) {
+    assert.ok(!/outline-color:\s*var\(--pmr-paper\)/.test(block),
+      "the focus ring must not be the popover's own background colour");
+  }
+  const t = tokens("dark");
+  assert.ok(ratio(t["--pmr-ink"], t["--pmr-paper"]) >= 4.5, "ink on paper is a visible ring in dark mode");
+  assert.match(CSS, /\.pmr-badge:focus-visible \{ box-shadow/,
+    "over an arbitrary photo one tone is not enough - the badge needs a second");
+});
+
+test("the dim/hide fade never composites our own annotations", () => {
+  // A single opacity on the tile faded the badge with the card: the Check
+  // badge measured 2.41:1, and the badge is what a dimmed card asks you to read.
+  assert.ok(!/\.tile-grid-redesign\.pmr-dim \{ opacity/.test(CSS),
+    "the fade must not be applied to the whole tile");
+  assert.match(CSS, /\.pmr-anchor > \*:not\(\.pmr-badge\)/,
+    "the badge has to sit outside the faded subtree, since a child cannot undo a parent's opacity");
+});
+
+test("F9: re-sorting puts focus and selection back", () => {
+  const grid = readFileSync(new URL("../core/grid.js", import.meta.url), "utf8");
+  assert.match(grid, /activeElement/, "re-appending a node blurs what is inside it");
+  assert.match(grid, /setSelectionRange/, "a half-typed correction should survive a reorder");
+  assert.match(grid, /preventScroll: true/, "restoring focus must not yank the page");
+});
+
+test("F10: the bridge modules are served at a rotating URL", () => {
+  const m = JSON.parse(readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
+  const war = m.web_accessible_resources.find((w) => w.resources.includes("core/brand.js"));
+  assert.equal(war.matches[0], "https://*/*", "a shopper's host cannot be known at build time");
+  assert.equal(war.use_dynamic_url, true,
+    "without this, any HTTPS page can probe a predictable extension-ID URL and detect the install");
+});

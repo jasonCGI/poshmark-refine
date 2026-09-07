@@ -78,11 +78,41 @@ export function plan(grid, SEL) {
   return { changed, wrappers: sorted.map((k) => k[2]) };
 }
 
-/** Apply `plan` to the DOM. No-op when the order already holds. */
+/**
+ * Apply `plan` to the DOM. No-op when the order already holds.
+ *
+ * Re-appending a node that CONTAINS the focused element blurs it: the browser
+ * moves focus to <body>. That was survivable while our only controls were
+ * mouse-driven, and became a real defect once the badge got a tabindex and the
+ * correction popover opened from it - a card arriving from infinite scroll
+ * could reorder the grid and drop the shopper out of the input they were
+ * typing in. So the focus, and any selection inside it, is put back.
+ */
 export function resort(grid, SEL) {
   const { changed, wrappers } = plan(grid, SEL);
   if (!changed) return false;
+
+  const doc = grid.ownerDocument;
+  const active = doc && doc.activeElement;
+  const keep = active && active !== doc.body && grid.contains(active) ? active : null;
+  // Text selection is lost with focus, and a half-typed brand correction is
+  // exactly the thing worth not destroying.
+  let selStart = null, selEnd = null;
+  if (keep && typeof keep.selectionStart === "number") {
+    selStart = keep.selectionStart;
+    selEnd = keep.selectionEnd;
+  }
+
   for (const w of wrappers) grid.appendChild(w);
+
+  if (keep && doc.contains(keep) && doc.activeElement !== keep) {
+    try {
+      keep.focus({ preventScroll: true });
+      if (selStart !== null && typeof keep.setSelectionRange === "function") {
+        keep.setSelectionRange(selStart, selEnd);
+      }
+    } catch (e) { /* a node that cannot take focus back is not worth throwing over */ }
+  }
   return true;
 }
 

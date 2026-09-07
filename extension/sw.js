@@ -30,12 +30,19 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
 
 const DYNAMIC_PREFIX = "pmr-brand-";
 
+// Hosts the manifest already covers with a static content script. Registering a
+// dynamic script for one of these runs brand.js twice on the same page: the
+// button has a fixed id so only one is visible, but the second copy keeps its
+// own polling interval and listeners running forever.
+const STATIC_HOSTS = new Set(["vuoriclothing.com"]);
+
 async function syncBrandScripts() {
   let sites = {};
   try { sites = (await chrome.storage.local.get("brandSites")).brandSites || {}; } catch (e) { return; }
 
   const wanted = new Map();
   for (const host of Object.keys(sites)) {
+    if (STATIC_HOSTS.has(host)) continue;   // already in the manifest
     const origins = ["https://" + host + "/*", "https://*." + host + "/*"];
     // Only register where the user actually granted us the host.
     let granted = false;
@@ -67,6 +74,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.brandSites) syncBrandScripts();
 });
 // A revoked permission must take the script down with it.
-if (chrome.permissions && chrome.permissions.onRemoved) {
-  chrome.permissions.onRemoved.addListener(syncBrandScripts);
+// BOTH transitions. Only onRemoved was handled, so revoking a site unregistered
+// its script and re-granting never registered it again - the site sat in the
+// list looking healthy and did nothing until an unrelated change happened to
+// resynchronise it.
+if (chrome.permissions) {
+  chrome.permissions.onRemoved?.addListener(syncBrandScripts);
+  chrome.permissions.onAdded?.addListener(syncBrandScripts);
 }

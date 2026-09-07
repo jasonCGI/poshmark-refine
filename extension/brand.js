@@ -104,8 +104,15 @@
     if (!product) {
       // Nothing resolved YET. These pages hydrate after load, so do not record
       // this URL as handled - marking it done here meant a late-arriving product
-      // was never picked up. Clear any button from a previous product first.
-      if (lastHref !== location.href) { document.getElementById(BTN_ID)?.remove(); lastHref = location.href; lastKey = ""; }
+      // was never picked up.
+      if (lastHref !== location.href) { lastHref = location.href; lastKey = ""; }
+      // But a button we ALREADY rendered must go, whatever the URL did. The
+      // site being removed from the shopper's list makes extraction fail at the
+      // same href, and the old button stayed clickable - still carrying the
+      // captured product, still writing search preferences for a site they had
+      // just revoked. Unregistering a content script does not tear down script
+      // that is already running.
+      if (lastKey) { document.getElementById(BTN_ID)?.remove(); lastKey = ""; }
       return;
     }
     // Re-render when the URL OR the resolved product changes: an SPA can swap

@@ -32,11 +32,21 @@
 
 /* ---- tile states -------------------------------------------------------- */
 .tile-grid-redesign.pmr-hide { display: none; }
-.tile-grid-redesign.pmr-hide.pmr-fade { display: block; opacity: .28; filter: grayscale(1); }
-.tile-grid-redesign.pmr-dim { opacity: .62; }
-.tile-grid-redesign.pmr-show { opacity: 1; }
-/* "Show hidden" from the HUD reveals removed cards, faded, whatever the mode */
-body.pmr-reveal .tile-grid-redesign.pmr-hide { display: block; opacity: .34; filter: grayscale(1); }
+.tile-grid-redesign.pmr-hide.pmr-fade,
+body.pmr-reveal .tile-grid-redesign.pmr-hide { display: block; }
+
+/* Fade POSHMARK'S content, never our annotations.
+   A single opacity on the whole tile composited the badge and the strip along
+   with the card: the Check badge measured 2.41:1 in light mode, and the badge
+   is exactly what a dimmed card is asking you to read. Opacity on a parent
+   cannot be undone by a child, so the fade is applied to their elements and
+   ours are excluded rather than rescued. */
+.tile-grid-redesign.pmr-dim .pmr-anchor > *:not(.pmr-badge),
+.tile-grid-redesign.pmr-dim .tile-grid-redesign__meta { opacity: .62; }
+.tile-grid-redesign.pmr-hide.pmr-fade .pmr-anchor > *:not(.pmr-badge),
+.tile-grid-redesign.pmr-hide.pmr-fade .tile-grid-redesign__meta { opacity: .28; filter: grayscale(1); }
+body.pmr-reveal .tile-grid-redesign.pmr-hide .pmr-anchor > *:not(.pmr-badge),
+body.pmr-reveal .tile-grid-redesign.pmr-hide .tile-grid-redesign__meta { opacity: .34; filter: grayscale(1); }
 
 /* ---- per-tile badge (sits on the image) --------------------------------- */
 /* Poshmark does not position the media wrapper, so we establish the containing
@@ -110,14 +120,16 @@ body.pmr-reveal #pmr-hud button.pmr-hud-reveal { background: var(--pmr-ink); col
 
 /* ---- correction popover (click a badge to teach Refine) ------------------ */
 .pmr-badge { pointer-events: auto; cursor: pointer; }
+/* The focus ring used --pmr-paper in dark mode, which is ALSO the popover's
+   background: a 3px outline painted in the colour behind it, 1:1, invisible.
+   --pmr-ink is high contrast on paper in both themes, so there is no override.
+   The badge sits on an arbitrary photograph where no single colour can be
+   guaranteed, so it gets a second tone outside the first - whichever of the
+   two the image resembles, the other one shows. */
 .pmr-badge:focus-visible,
 #pmr-correct button:focus-visible,
 #pmr-correct input:focus-visible { outline: 3px solid var(--pmr-ink); outline-offset: 2px; }
-@media (prefers-color-scheme: dark) {
-  .pmr-badge:focus-visible,
-  #pmr-correct button:focus-visible,
-  #pmr-correct input:focus-visible { outline-color: var(--pmr-paper); }
-}
+.pmr-badge:focus-visible { box-shadow: 0 0 0 6px var(--pmr-paper); }
 #pmr-correct {
   position: absolute; top: 8px; left: 8px; right: 8px; z-index: 20;
   font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;

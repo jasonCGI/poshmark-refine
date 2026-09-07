@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   MIN_EVIDENCE, fitEntry, recordFit, learnedSize, sizesWithFit, explainFit, forgetFit,
+  canonicalBrand, migrateLedger,
 } from "../core/fit.js";
 
 const add = (l, person, brand, category, size, fits) =>
@@ -73,7 +74,7 @@ test("the ledger stays inspectable and an entry can be forgotten", () => {
   assert.equal(l.length, 2, "a flat list, so the shopper can see what was learned and from what");
   assert.ok(l[0].at, "each outcome is timestamped");
 
-  const fewer = forgetFit(l, 0);
+  const fewer = forgetFit(l, l[0].id);
   assert.equal(fewer.length, 1);
   assert.equal(learnedSize(fewer, "me", "Levi's", "bottoms"), null,
     "removing evidence removes the lesson, rather than leaving a conclusion with no support");
@@ -128,4 +129,69 @@ test("the shared intent is not mutated by judging a card", () => {
   // and a different brand is unaffected by what Levi's taught us
   const other = verdict(parseCard({ title: "Rails Bretton Jeans", size: "28" }), intent);
   assert.equal(other.state, "hide", "Levi's cut says nothing about Rails");
+});
+
+
+// --- Codex review 2026-09-08 -----------------------------------------------
+
+test("F2: an outcome is deleted by identity, never by position", () => {
+  let l = [];
+  for (const size of ["M", "L", "XL"]) l = add(l, "me", "Vuori", "tops", size, true);
+  const targetId = l[1].id;                       // the L
+  // another settings page removed the M in between; the rendered list is stale
+  const elsewhere = forgetFit(l, l[0].id);
+  const after = forgetFit(elsewhere, targetId);
+  assert.deepEqual(after.map((e) => e.size), ["XL"], "the L went, not whatever shifted into slot 1");
+  assert.ok(l.every((e) => e.id), "every outcome carries a stable id");
+  assert.equal(new Set(l.map((e) => e.id)).size, 3, "and the ids are distinct");
+});
+
+test("F3: a brand typed as an alias is learned under its canonical name", () => {
+  assert.equal(canonicalBrand("Levis"), "Levi's");
+  assert.equal(canonicalBrand("  levi's  "), "Levi's");
+  assert.equal(canonicalBrand("Some Unknown Label"), "Some Unknown Label", "unknown brands stay learnable");
+  assert.equal(canonicalBrand(""), "");
+
+  // the reported failure: settings showed a lesson the verdict could never use
+  let l = [];
+  for (let i = 0; i < 2; i++) l = recordFit(l, { person: "me", brand: "Levis", category: "tops", size: "M", fits: true });
+  assert.equal(learnedSize(l, "me", "Levi's", "tops").size, "M",
+    "recorded as Levis, found as Levi's - which is how cards parse");
+});
+
+test("F3: an older ledger is migrated rather than silently ignored", () => {
+  const legacy = [
+    { person: "me", brand: "Levis", category: "tops", size: "m", fits: true, at: 1 },
+    { person: "me", brand: "Levis", category: "tops", size: "m", fits: true, at: 2 },
+  ];
+  const fixed = migrateLedger(legacy);
+  assert.equal(fixed.length, 2);
+  assert.ok(fixed.every((e) => e.id), "ids are backfilled");
+  assert.equal(learnedSize(fixed, "me", "Levi's", "tops").size, "M");
+  assert.deepEqual(migrateLedger(migrateLedger(legacy)).map((e) => e.brand), ["Levi's", "Levi's"],
+    "idempotent - migrating twice does not re-canonicalise into something else");
+});
+
+test("F4: a size another person already contributed is still THIS person's lesson", () => {
+  const household = { alice: { tops: ["S"] }, bob: { tops: ["M"] }, cara: { tops: ["L"] } };
+  // Alice learns L, which Cara already wears
+  let l = [];
+  for (let i = 0; i < 2; i++) l = recordFit(l, { person: "alice", brand: "Vuori", category: "tops", size: "L", fits: true });
+
+  const v = verdict(parseCard({ title: "Vuori Pullover", size: "L" }), intentFor(household, "anyone", "tops", { fitLedger: l }));
+  assert.equal(v.state, "show");
+  assert.deepEqual(v.fits.sort(), ["alice", "cara"],
+    "Cara wears L outright and Alice learned it - dropping Alice named the wrong person");
+});
+
+test("F4: one person's lesson is not overwritten by the next person's", () => {
+  const household = { alice: { tops: ["S"] }, bob: { tops: ["M"] } };
+  let l = [];
+  for (let i = 0; i < 2; i++) l = recordFit(l, { person: "alice", brand: "Vuori", category: "tops", size: "XL", fits: true });
+  for (let i = 0; i < 2; i++) l = recordFit(l, { person: "bob", brand: "Vuori", category: "tops", size: "XXL", fits: true });
+
+  const v = verdict(parseCard({ title: "Vuori Pullover", size: "XL" }), intentFor(household, "anyone", "tops", { fitLedger: l }));
+  assert.deepEqual(v.fits, ["alice"]);
+  assert.match(v.notes.join(" "), /XL in Vuori fitted 2 times/,
+    "Alice's explanation survived Bob being processed after her");
 });

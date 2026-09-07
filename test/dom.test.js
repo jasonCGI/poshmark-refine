@@ -16,7 +16,7 @@ import {
 } from "../core/grid.js";
 import {
   extractProduct, brandForHost, guessCategory, stripVariantSuffix, searchQueryFor,
-  hostKey, sitesWith, brandFromJsonLd, BRAND_SITES,
+  hostKey, sitesWith, brandFromJsonLd, BRAND_SITES, pruneBuiltIns,
 } from "../core/brand.js";
 import { poshmarkSearchUrl } from "../core/search.js";
 
@@ -559,4 +559,34 @@ test("a built-in site cannot also be added by hand", () => {
   assert.match(optionsJs, /BRAND_SITES\[host\]/, "adding a built-in host must be refused");
   // and the built-in list is what that guard is checking against
   assert.ok(Object.keys(BRAND_SITES).length > 0);
+});
+
+test("F5/F6: the service worker syncs on both permission transitions, and skips static hosts", () => {
+  const sw = readFileSync(new URL("../extension/sw.js", import.meta.url), "utf8");
+  assert.match(sw, /permissions\.onAdded/, "re-granting a revoked site left its bridge dead");
+  assert.match(sw, /permissions\.onRemoved/);
+  assert.match(sw, /STATIC_HOSTS/, "a host the manifest already covers must not get a second script");
+});
+
+test("F6: a stored entry cannot downgrade a built-in brand mapping", () => {
+  // written before adding a built-in host was refused
+  const legacy = { "vuoriclothing.com": {} };
+  assert.deepEqual(sitesWith(legacy)["vuoriclothing.com"], { brand: "Vuori" },
+    "the checked spelling wins over an empty legacy entry");
+  assert.deepEqual(pruneBuiltIns(legacy), {}, "and the legacy entry is dropped on load");
+  assert.deepEqual(pruneBuiltIns({ "aloyoga.com": {} }), { "aloyoga.com": {} }, "real additions survive");
+
+  // the reported consequence: a product page with no JSON-LD brand
+  const doc = new JSDOM(`<h1>Elevation Cami</h1>
+    <script type="application/ld+json">${JSON.stringify({ "@type": "Product", name: "Elevation Cami" })}</script>`).window.document;
+  assert.equal(extractProduct(doc, "vuoriclothing.com", legacy).brand, "Vuori",
+    "used to return null, because the legacy entry named no brand and the page named none either");
+});
+
+test("F7: the bridge button goes when the page stops resolving, not only on navigation", () => {
+  const js = readFileSync(new URL("../extension/brand.js", import.meta.url), "utf8");
+  // removing the site makes extraction fail at the SAME href; the old button
+  // stayed clickable and still wrote search preferences for a revoked site
+  assert.match(js, /if \(lastKey\) \{ document\.getElementById\(BTN_ID\)\?\.remove\(\)/,
+    "removal must not be conditional on the URL having changed");
 });

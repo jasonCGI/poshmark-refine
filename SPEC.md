@@ -197,6 +197,8 @@ listed here so the spec does not read as though the tool stopped there.
 | 0.15.2 | the update bar states the two steps instead of linking to a page that does not answer the question |
 | 0.16.0 | a self-check that runs those live assertions on every popup open; brand sites the shopper adds, with a per-site permission |
 | 0.17.0 | a match names WHO it fits; an accessibility pass (dark-mode badge contrast failed AA at 1.88:1, and the correction popover was mouse-only); Tier 4 fit memory |
+| 0.17.1 | the update bar performs the update instead of only describing it |
+| 0.18.0 | all ten findings from Codex's 2026-09-08 review, including `use_dynamic_url` |
 
 Also built and not in the original slice: per-category size profiles (a person
 is not one size), a search box in the popup, and an opt-in daily update check.
@@ -211,12 +213,6 @@ nobody could inspect would be worse than no learning at all.
 
 ## Open questions
 
-0. **`core/brand.js` and `core/search.js` are now web-accessible to `https://*/*`,**
-   because a site the shopper adds cannot be known at build time. Any page can
-   therefore fetch those two files and learn the extension is installed. The
-   fix is `use_dynamic_url: true` on that resource entry, which serves them at
-   a rotating URL; it was not taken yet because it would also change the
-   working Vuori path and wants live verification before it ships.
 1. **Chrome only, or Chrome + Edge + Firefox?** MV3 differences are small for
    this shape, but Firefox needs a separate store listing.
 2. **Distribution.** Loaded unpacked today, which cannot auto-update - the

@@ -37,12 +37,30 @@ export function hostKey(input) {
   return h.replace(/^www\./, "");
 }
 
-/** The built-in sites plus the shopper's own, theirs winning on a clash. */
+/**
+ * The built-in sites plus the shopper's own.
+ *
+ * A BUILT-IN entry wins. It used to lose, so an old stored `{}` for a host that
+ * is built in - written before adding one was refused - replaced the checked
+ * `{brand: "Vuori"}` with nothing, and any product page without a JSON-LD brand
+ * then failed to resolve at all. The shopper's list can add hosts; it cannot
+ * downgrade one we ship.
+ */
 export function sitesWith(extra) {
   const out = Object.assign({}, BRAND_SITES);
   for (const [host, v] of Object.entries(extra || {})) {
     const k = hostKey(host);
-    if (k) out[k] = v || {};
+    if (k && !BRAND_SITES[k]) out[k] = v || {};
+  }
+  return out;
+}
+
+/** The shopper's list with anything we now ship built-in removed. */
+export function pruneBuiltIns(extra) {
+  const out = {};
+  for (const [host, v] of Object.entries(extra || {})) {
+    const k = hostKey(host);
+    if (k && !BRAND_SITES[k]) out[k] = v || {};
   }
   return out;
 }
