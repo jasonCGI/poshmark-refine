@@ -24,6 +24,12 @@
       // a product with no stated colourway is UNKNOWN, not colourless - filter
       // on one only when the page actually named it
       colourTerms: product.colour ? [product.colour] : (stored.colourTerms || []),
+      // Remember that these came from a brand page rather than from the shopper.
+      // They persist into every later search, and a stale brand filter makes the
+      // extension look broken - every card dimmed for "no known brand" - with
+      // nothing on screen saying why. The popup uses this to say so and offer
+      // to clear it.
+      fromBridge: { brand: product.brand, host: location.hostname, at: Date.now() },
     });
     // profiles, sizes, who, behaviour and department are the shopper's - untouched
     await chrome.storage.local.set({ refine: next });

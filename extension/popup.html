@@ -80,6 +80,16 @@
   .selfcheck b { display: block; margin-bottom: 3px; }
   .selfcheck ul { margin: 0; padding-left: 16px; }
   .selfcheck li { margin: 1px 0; }
+  /* Criteria a brand page wrote. Announced because they outlive the visit that
+     created them, and a filter you did not set and cannot see is indistinguishable
+     from the tool being broken. */
+  .bridgebar { display: flex; align-items: center; gap: 8px; margin: 10px 14px 0; padding: 8px 10px;
+               border-radius: 8px; font-size: 12.5px; background: var(--card);
+               border: 1px solid var(--line); color: var(--muted); }
+  .bridgebar b { color: var(--ink); }
+  .bridgebar .upbtn { margin-left: auto; flex: none; font: inherit; font-weight: 600; cursor: pointer;
+                      padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line);
+                      background: transparent; color: var(--accent-ink); }
   .pstatus .mini { font: inherit; font-weight: 600; cursor: pointer; margin-left: auto; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; }
 </style>
 </head>
@@ -96,6 +106,10 @@
     </span>
     <button id="upreload" class="upbtn" type="button">Reload</button>
     <button id="updismiss" type="button" title="Dismiss this version" aria-label="Dismiss this version">&times;</button>
+  </div>
+  <div class="bridgebar" id="bridgebar" hidden>
+    <span id="bridgetext"></span>
+    <button id="bridgeclear" class="upbtn" type="button">Clear</button>
   </div>
   <div class="pstatus" id="pagestatus"><span class="led"></span><span id="pstext">Checking this page&hellip;</span></div>
   <div class="selfcheck" id="selfcheck" hidden></div>

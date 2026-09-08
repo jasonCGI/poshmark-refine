@@ -294,6 +294,7 @@ function renderAll() {
   $("nwt").setAttribute("aria-pressed", String((state.conditions || []).includes("nwt")));
   renderColourways();
   renderPresets();
+  renderBridge();
 }
 
 /** Save first (so the page refines the moment it loads), then go. Reuse the
@@ -375,7 +376,12 @@ function escapeHtml(s) {
 // ---- events ------------------------------------------------------------------
 $("who").addEventListener("change", () => { state.who = $("who").value; mark("who"); renderSizes(); });
 $("category").addEventListener("change", () => { state.category = $("category").value; mark("category"); renderSizes(); });
-$("brands").addEventListener("input", () => mark("brands"));
+$("brands").addEventListener("input", () => {
+  mark("brands");
+  // Typing over the brands makes them the shopper's, not the bridge's, so the
+  // "carried over from" notice stops being true.
+  if (state.fromBridge) { delete state.fromBridge; mark("fromBridge"); renderBridge(); }
+});
 $("cwAdd").addEventListener("click", addColourway);
 $("prSave").addEventListener("click", savePreset);
 $("prName").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); savePreset(); } });
@@ -473,6 +479,34 @@ $("updates").addEventListener("change", async () => {
   const st = (await chrome.storage.local.get("updateCheck")).updateCheck || {};
   await chrome.storage.local.set({ updateCheck: Object.assign({}, st, { enabled, lastCheck: 0 }) });
   if (enabled) runUpdateCheck(); else $("upbar").hidden = true;
+});
+
+// ---- criteria a brand page wrote ------------------------------------------
+// The bridge sets brands, query, category and colourway from a product page,
+// and they persist. Coming back later to an unrelated search, every card is
+// dimmed for "no known brand in the title" and nothing says a brand filter is
+// still on. Announce it, and make undoing it one click.
+function renderBridge() {
+  const bar = $("bridgebar");
+  const from = state.fromBridge;
+  if (!from || !from.brand) { bar.hidden = true; return; }
+  $("bridgetext").innerHTML = "Filtering by <b>" + escapeHtml(from.brand) +
+    "</b>, carried over from " + escapeHtml(from.host || "a brand page") + ".";
+  bar.hidden = false;
+}
+
+$("bridgeclear").addEventListener("click", async () => {
+  // Clear only what the bridge owns. Sizes, people and behaviour are the
+  // shopper's and were never the bridge's to touch.
+  state.brands = [];
+  state.colourTerms = [];
+  state.query = "";
+  delete state.fromBridge;
+  $("brands").value = "";
+  for (const f of ["brands", "colourTerms", "query", "fromBridge"]) mark(f);
+  renderBridge();
+  renderColourways();
+  await save();
 });
 
 // The only button here that changes anything. Chrome cannot fetch the update,

@@ -59,10 +59,19 @@ const isShoe = (category) => String(category || "").toLowerCase() === "shoes";
  * inference happens in `sizeMatches`, where the shopper's intent is known.
  * `category` selects the size system; it defaults to the garment one.
  */
+/** One-size, as sellers actually write it. */
+const ONE_SIZE = /^(os|o\/s|osfa|one\s*size(\s*fits\s*(all|most))?|1\s*size|free\s*size|universal)$/;
+
 export function normalizeSize(raw, category = "tops") {
   const text = String(raw || "").trim();
   if (!text) return { canonical: null, kind: null, confidence: "unknown", raw: text };
   let t = text.toLowerCase().replace(/^size[:\s]+/, "").trim();
+
+  // One size fits all. Standard for hats, scarves and much jewellery, and it
+  // used to come back "not readable" - which put a correct, common size in the
+  // same bucket as a typo. Checked before the shoe branch, where OS would
+  // otherwise fall straight through to unknown.
+  if (ONE_SIZE.test(t)) return { canonical: "OS", kind: "one-size", confidence: "exact", raw: text };
 
   if (isShoe(category)) {
     // 8, 8.5, us 9, 9 1/2 -> a shoe number. Anything else is unknown.
@@ -88,7 +97,9 @@ export function normalizeSize(raw, category = "tops") {
   const us = t.match(/^(?:us\s*)?(\d{1,2})$/);
   if (us) return { canonical: "US " + parseInt(us[1], 10), kind: "us", confidence: "exact", raw: text };
 
-  // `X8`, `Sz`, `OS`, free text - not readable. Unknown, deliberately.
+  if (ONE_SIZE.test(t)) return { canonical: "OS", kind: "one-size", confidence: "exact", raw: text };
+
+  // `X8`, `Sz`, free text - not readable. Unknown, deliberately.
   return { canonical: null, kind: null, confidence: "unknown", raw: text };
 }
 
@@ -100,6 +111,11 @@ export function normalizeSize(raw, category = "tops") {
  * conversion table - shown, but flagged, because brands disagree about it.
  */
 export function sizeMatches(cardSize, wanted, category = "tops") {
+  // "One size" is the seller stating it fits everyone. That is a claim, not a
+  // measurement, so it SURFACES against any requested size and is flagged -
+  // the same asymmetry a described size gets. It is never a mismatch, because
+  // there is nothing to mismatch against.
+  if (cardSize && cardSize.kind === "one-size") return "inferred";
   if (!cardSize || cardSize.confidence === "unknown") return "unknown";
   const want = normalizeSize(wanted, category);
   if (want.confidence === "unknown") return "unknown";

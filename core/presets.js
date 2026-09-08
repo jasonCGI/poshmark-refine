@@ -39,6 +39,10 @@ export function applyPreset(settings = {}, preset = {}) {
     else if (Array.isArray(settings[f])) next[f] = [];
     else if (f === "maxPrice") next[f] = null;
   }
+  // A preset replaces every field a brand page had set, so the note saying the
+  // brand came from that page stops being true. It is provenance, not a
+  // setting, which is also why it is not in PRESET_FIELDS.
+  delete next.fromBridge;
   return next;
 }
 

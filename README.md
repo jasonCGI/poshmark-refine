@@ -67,7 +67,7 @@ extension makes that is not to Poshmark.
 
 ## Status
 
-Shipping at **v0.18.0**, loaded and used in Chrome.
+Shipping at **v0.19.0**, loaded and used in Chrome.
 
 | piece | state |
 |---|---|
@@ -82,7 +82,7 @@ Shipping at **v0.18.0**, loaded and used in Chrome.
 | `core/update.js` | opt-in update check |
 | `extension/` | content script, brand-page script, popup, options, service worker |
 | `fixtures/` | 48 captured result rows (text) + a real grid fragment (DOM) |
-| `test/` | **138 tests** - `core.test.js` against fixture text, `dom.test.js` in jsdom against the shipped modules |
+| `test/` | **141 tests** - `core.test.js` against fixture text, `dom.test.js` in jsdom against the shipped modules |
 
 The DOM tests import `core/grid.js`, which is the same module the content
 script imports, so the tests exercise shipped code rather than a copy of it.
@@ -91,7 +91,7 @@ Poshmark changes its markup, those tests fail before you find out on the site.
 
 ```
 npm install     # jsdom, for the DOM tests
-npm test        # 138 passing
+npm test        # 141 passing
 ```
 
 Node 20+ (uses `node:test`). jsdom is the only dependency, and it is dev-only -

@@ -199,6 +199,7 @@ listed here so the spec does not read as though the tool stopped there.
 | 0.17.0 | a match names WHO it fits; an accessibility pass (dark-mode badge contrast failed AA at 1.88:1, and the correction popover was mouse-only); Tier 4 fit memory |
 | 0.17.1 | the update bar performs the update instead of only describing it |
 | 0.18.0 | all ten findings from Codex's 2026-09-08 review, including `use_dynamic_url` |
+| 0.19.0 | three bugs found by finally looking at a live page: Women-only category facets (Men's search was unfiltered since 0.15.0), one-size read as unreadable, and a brand filter carried over from a bridge visit with nothing saying so |
 
 Also built and not in the original slice: per-category size profiles (a person
 is not one size), a search box in the popup, and an opt-in daily update check.

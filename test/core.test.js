@@ -639,12 +639,19 @@ test("an AI-read brand can surface a card but must never discard one", () => {
 import { poshmarkSearchUrl, POSH_CATEGORY, POSH_FACETS_VERIFIED } from "../core/search.js";
 
 test("every category maps to a facet read off Poshmark's own links", () => {
-  for (const [cat, facet] of Object.entries(POSH_CATEGORY)) {
-    assert.ok(POSH_FACETS_VERIFIED.includes(facet), cat + " -> " + facet + " was never verified");
+  for (const [dep, table] of Object.entries(POSH_CATEGORY)) {
+    for (const [cat, facet] of Object.entries(table)) {
+      assert.ok(POSH_FACETS_VERIFIED.includes(facet),
+        dep + "/" + cat + " -> " + facet + " was never verified");
+    }
   }
   // the convention is underscores AND a literal ampersand - not guessable
-  assert.equal(POSH_CATEGORY.outerwear, "Jackets_&_Coats");
-  assert.equal(POSH_CATEGORY.bottoms, "Pants_&_Jumpsuits");
+  assert.equal(POSH_CATEGORY.Women.outerwear, "Jackets_&_Coats");
+  assert.equal(POSH_CATEGORY.Women.bottoms, "Pants_&_Jumpsuits");
+  // and the names genuinely differ by department, which is the whole point
+  assert.notEqual(POSH_CATEGORY.Men.bottoms, POSH_CATEGORY.Women.bottoms);
+  assert.notEqual(POSH_CATEGORY.Men.tops, POSH_CATEGORY.Women.tops);
+  assert.equal(POSH_CATEGORY.Men.dresses, undefined, "Men has no Dresses category");
 });
 
 test("the search URL encodes the ampersand facet correctly", () => {
@@ -654,4 +661,44 @@ test("the search URL encodes the ampersand facet correctly", () => {
   assert.match(u, /department=Women/);
   // All departments means no department facet at all
   assert.ok(!poshmarkSearchUrl({ query: "x", department: "All" }).includes("department="));
+});
+
+// --- live findings, 2026-09-08 --------------------------------------------
+
+test("category facets are per department - Men has Pants and Shirts, not Women's names", () => {
+  // Harvested from Poshmark's own /category/<Department>-<Category> links.
+  // One flat table of Women's names was sent for every department, so a Men's
+  // search sent a facet that does not exist and came back unfiltered: a purple
+  // men's PANTS search returned caps and a sweatshirt.
+  assert.match(poshmarkSearchUrl({ query: "purple", department: "Men", category: "bottoms" }), /category=Pants$/);
+  assert.match(poshmarkSearchUrl({ query: "purple", department: "Women", category: "bottoms" }), /category=Pants_%26_Jumpsuits$/);
+  assert.match(poshmarkSearchUrl({ query: "tee", department: "Men", category: "tops" }), /category=Shirts$/);
+  assert.match(poshmarkSearchUrl({ query: "tee", department: "Women", category: "tops" }), /category=Tops$/);
+  assert.match(poshmarkSearchUrl({ query: "tee", department: "Kids", category: "tops" }), /category=Shirts_%26_Tops$/);
+
+  // Men's has no Dresses category at all: send nothing rather than invent one
+  assert.ok(!poshmarkSearchUrl({ query: "x", department: "Men", category: "dresses" }).includes("category="));
+  // "All" spans departments whose names differ, so no single facet is correct
+  assert.ok(!poshmarkSearchUrl({ query: "x", department: "All", category: "tops" }).includes("category="));
+});
+
+test("one size is a size, not an unreadable one", () => {
+  for (const raw of ["OS", "O/S", "OSFA", "One Size", "one size fits all", "Free Size"]) {
+    const s = normalizeSize(raw, "tops");
+    assert.equal(s.canonical, "OS", raw + " should read as one-size");
+    assert.equal(s.confidence, "exact");
+  }
+  // it satisfies any request, but as the seller's CLAIM - surfaced and flagged,
+  // the same asymmetry a described size gets
+  assert.equal(sizeMatches(normalizeSize("OS", "tops"), "XS", "tops"), "inferred");
+  assert.equal(sizeMatches(normalizeSize("OS", "shoes"), "US 8", "shoes"), "inferred");
+  // and a genuine typo is still unknown
+  assert.equal(normalizeSize("X8", "tops").confidence, "unknown");
+});
+
+test("a preset clears the note about where a brand came from", () => {
+  const withBridge = { brands: ["Vuori"], query: "Cami", fromBridge: { brand: "Vuori", host: "vuoriclothing.com" } };
+  const after = applyPreset(withBridge, { brands: ["Rails"], query: "Blouse" });
+  assert.equal(after.fromBridge, undefined, "the preset replaced what the bridge set, so its note is stale");
+  assert.deepEqual(after.brands, ["Rails"]);
 });
